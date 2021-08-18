@@ -11,8 +11,8 @@ namespace vkLearn
     {
 		static string AppName = "DrawHello Program";
 		static string ClassName = "DrawHelloClass";
-		int Width = 0;
-		int Height = 0;
+		public int Width = 0;
+	    public int Height = 0;
 	    public IntPtr hwnd;
 		Win32.MSG Msg;
 		int rv;

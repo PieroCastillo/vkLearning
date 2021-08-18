@@ -149,7 +149,7 @@ namespace vkLearn
             {
                 //if (isDeviceSuitable(gpu))
                 //{
-                    GPUs.Add(gpu);
+                   GPUs.Add(gpu);
                 //}
             }
 
@@ -225,6 +225,49 @@ namespace vkLearn
 
         }
 
+        VkSurfaceFormatKHR chooseSwapSurfaceFormat(List<VkSurfaceFormatKHR> availableFormats) 
+        {
+            foreach(var format in availableFormats)
+            {
+                if(format.format == VkFormat.B8G8R8A8SRgb && format.colorSpace == VkColorSpaceKHR.SrgbNonLinear)
+                {
+                    return format;
+                }
+            }
+            //throw new NotImplementedException("no found suitable format");
+            return availableFormats[0];
+        }
+
+        VkPresentModeKHR chooseSwapPresentMode(List<VkPresentModeKHR> availablePresentModes) 
+        {
+            foreach (var availablePresentMode in availablePresentModes)
+            {
+                if (availablePresentMode == VkPresentModeKHR.Mailbox) 
+                {
+                    return availablePresentMode;
+                }
+            }
+
+            return VkPresentModeKHR.Fifo;
+        }
+        VkExtent2D chooseSwapExtent(VkSurfaceCapabilitiesKHR capabilities) 
+        {
+            if(capabilities.currentExtent.width != uint.MaxValue)
+            {
+                return capabilities.currentExtent;
+            }
+            else
+            {
+                int width = window.Width;
+                int height = window.Height;
+
+                int awidth = Math.Clamp(width, (int)capabilities.minImageExtent.width, (int)capabilities.maxImageExtent.width);
+                int aheight = Math.Clamp(height, (int)capabilities.maxImageExtent.height, (int)capabilities.maxImageExtent.height);
+
+                return new(awidth, aheight);
+            }
+        }
+
         List<string> getRequiredExtensions()
         {
             //uint instanceExtensionsCount = 0;
@@ -250,7 +293,7 @@ namespace vkLearn
             Console.WriteLine("instanceExtensions:");
             foreach (var ext in instExts)
             {
-                Console.WriteLine($"     {ext}");
+                Console.WriteLine($"    {ext}");
             }
             return list;
         }
@@ -328,6 +371,31 @@ namespace vkLearn
             return requireExts.Count <= 0;
         }
 
+        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
+        {
+            SwapChainSupportDetails details = new();
+            details.formats = new();
+            details.presentModes = new();
+
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, out details.capabilities);
+
+            uint formatCount = 0;
+            var formats = vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface);
+            //var formats = new List<VkSurfaceFormatKHR>();
+            foreach(var format in formats)
+            {
+                details.formats.Add(format);
+            }
+
+            var presentModes = vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface);
+            foreach(var presentMode in presentModes)
+            {
+                details.presentModes.Add(presentMode);
+            }
+
+            return details;
+        }
+
         //no c para que es esto ajajkkjaskj
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
         {
@@ -371,10 +439,16 @@ namespace vkLearn
         //check which gpus are availables
         bool isDeviceSuitable(VkPhysicalDevice device)
         {
-            QueueFamilyIndices indices = findQueueFamilies(device);
-            Console.WriteLine($"indices: {indices}");
+            //QueueFamilyIndices indices = findQueueFamilies(device);
+            //Console.WriteLine($"indices: {indices}");
             bool extensionsSupported = checkDeviceExtensionSupport(device);
-            return indices.isComplete() && extensionsSupported;
+            bool swapChainAdequate = false;
+            if (extensionsSupported)
+            {
+                SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+                swapChainAdequate = swapChainSupport.formats.Count > 0 && swapChainSupport.presentModes.Count > 0;
+            }
+            return extensionsSupported && swapChainAdequate;
         }
 
         //dispose the vkObjects
@@ -419,6 +493,13 @@ namespace vkLearn
 
             return VK_FALSE;
         }
+    }
+
+    struct SwapChainSupportDetails
+    {
+        public VkSurfaceCapabilitiesKHR capabilities;
+        public List<VkSurfaceFormatKHR> formats;
+        public List<VkPresentModeKHR> presentModes;
     }
 
     struct QueueFamilyIndices
