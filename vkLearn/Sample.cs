@@ -255,6 +255,7 @@ namespace vkLearn
             return list;
         }
 
+        //Add extensions by platform
         void AddExtsByPlatform(List<string> list, List<string> instanceExts)
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && instanceExts.Contains(KHRWin32SurfaceExtensionName))
@@ -302,6 +303,7 @@ namespace vkLearn
             throw new PlatformNotSupportedException();
         }
 
+        //check if the validation Layer is available
         bool checkValidationLayerSupport()
         {
             var layers = vkEnumerateInstanceLayerProperties();
@@ -313,6 +315,7 @@ namespace vkLearn
             return list.Any(x => x.GetLayerName() == validationLayer);
         }
 
+        // check if requeted extensions are available
         bool checkDeviceExtensionSupport(VkPhysicalDevice device)
         {
             var requireExts = getRequiredExtensions();
@@ -325,6 +328,7 @@ namespace vkLearn
             return requireExts.Count <= 0;
         }
 
+        //no c para que es esto ajajkkjaskj
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
         {
             QueueFamilyIndices indices = new();
@@ -363,7 +367,8 @@ namespace vkLearn
 
             return indices;
         }
-
+        
+        //check which gpus are availables
         bool isDeviceSuitable(VkPhysicalDevice device)
         {
             QueueFamilyIndices indices = findQueueFamilies(device);
@@ -372,6 +377,7 @@ namespace vkLearn
             return indices.isComplete() && extensionsSupported;
         }
 
+        //dispose the vkObjects
         public void Dispose()
         {
             vkDestroySurfaceKHR(instance, surface, null);
