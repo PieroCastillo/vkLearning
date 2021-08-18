@@ -24,6 +24,7 @@ namespace vkLearn
             KHRSwapchainExtensionName
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
+        VkSwapchainKHR swapChain;
         VkSurfaceKHR surface;// = VkSurfaceKHR.Null;
         VkQueue queue = VkQueue.Null;
         VkQueue presentQueue = VkQueue.Null;
@@ -40,6 +41,7 @@ namespace vkLearn
             pickPhys();
             CreateLogicalDevice();
             CreateSurface();
+            CreateSwapChain();
             window.Run(RenderLoop);
         }
 
@@ -59,10 +61,10 @@ namespace vkLearn
                 applicationVersion = new VkVersion(0,0,1),
                 pEngineName = "Learn".ToVk(),
                 engineVersion = new VkVersion(0,1,0),
-                apiVersion = VkVersion.Version_1_1
+                apiVersion = VkVersion.Version_1_2
             };
 
-            var extensions = getRequiredExtensions();
+            var extensions = getRequiredInstanceExtensions();
             VkInstanceCreateInfo createInfo = new()
             {
                 sType = VkStructureType.InstanceCreateInfo,
@@ -186,11 +188,15 @@ namespace vkLearn
 
             vkGetPhysicalDeviceFeatures(gpu, out VkPhysicalDeviceFeatures deviceFeatures);
 
+            var exts = getRequiredGPUExtensions(gpu);
+
             VkDeviceCreateInfo deviceInfo = new()
             {
                 pQueueCreateInfos = &queueCreateInfo,
                 queueCreateInfoCount = 1,
-                pEnabledFeatures = &deviceFeatures
+                pEnabledFeatures = &deviceFeatures,
+                ppEnabledExtensionNames = Interop.String.AllocToPointers(exts.ToArray()),
+                enabledExtensionCount = (uint)exts.Count
             };
 
             if (enableValidationLayers)
@@ -218,6 +224,64 @@ namespace vkLearn
             };
             vkCreateWin32SurfaceKHR(instance, &win32info, null, out surface).CheckResult();
             Console.WriteLine("surface created successfully");
+        }
+        void CreateSwapChain()
+        {
+            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(gpu);
+
+            VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+            VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+            VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+
+            uint imageCount = swapChainSupport.capabilities.minImageCount + 1;
+
+            if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount)
+            {
+                imageCount = swapChainSupport.capabilities.maxImageCount;
+            }
+
+            VkSwapchainCreateInfoKHR createInfo = new()
+            {
+                sType = VkStructureType.SwapchainCreateInfoKHR,
+                surface = surface,
+                minImageCount = imageCount,
+                imageColorSpace = surfaceFormat.colorSpace,
+                imageExtent = extent,
+                imageArrayLayers = 1,
+                imageUsage = VkImageUsageFlags.ColorAttachment,
+                preTransform = swapChainSupport.capabilities.currentTransform,
+                compositeAlpha = VkCompositeAlphaFlagsKHR.Opaque,
+                presentMode = presentMode,
+                clipped = true,
+                oldSwapchain = VkSwapchainKHR.Null,
+                queueFamilyIndexCount = 0,
+                pQueueFamilyIndices = null,
+                pNext = null,
+                imageSharingMode = VkSharingMode.Exclusive
+            };
+
+            QueueFamilyIndices indices = findQueueFamilies(gpu);
+            uint[] queueFamilyIndices = { indices.graphicsFamily.Value, indices.presentFamily.Value };
+
+            if (indices.graphicsFamily != indices.presentFamily)
+            {
+                createInfo.imageSharingMode = VkSharingMode.Concurrent;
+                createInfo.queueFamilyIndexCount = 2;
+                createInfo.pQueueFamilyIndices = Interop.AllocToPointer(queueFamilyIndices);
+            }
+            else
+            {
+                createInfo.imageSharingMode = VkSharingMode.Exclusive;
+                createInfo.queueFamilyIndexCount = 0; // Optional
+                createInfo.pQueueFamilyIndices = null; // Optional
+            }
+
+
+            Console.WriteLine("before create swapchain");
+
+            vkCreateSwapchainKHR(device, &createInfo, null, out swapChain).CheckResult();
+
+            Console.WriteLine("swapchain created successfully!");
         }
 
         void RenderLoop()
@@ -268,7 +332,7 @@ namespace vkLearn
             }
         }
 
-        List<string> getRequiredExtensions()
+        List<string> getRequiredInstanceExtensions()
         {
             //uint instanceExtensionsCount = 0;
             var instanceExtensions = vkEnumerateInstanceExtensionProperties();
@@ -279,10 +343,11 @@ namespace vkLearn
                 instExts.Add(ext.GetExtensionName());
             }
 
+            list.Add(EXTDebugUtilsExtensionName);
+            list.Add(EXTValidationFeaturesExtensionName);
+            list.Add(EXTDebugReportExtensionName);
             list.Add(KHRSurfaceExtensionName);
             AddExtsByPlatform(list, instExts);
-            list.Add(EXTDebugUtilsExtensionName);
-          //  list.Add(KHRSwapchainExtensionName);
 
             Console.WriteLine("required extensions:");
             foreach (var ext in list)
@@ -296,6 +361,32 @@ namespace vkLearn
                 Console.WriteLine($"    {ext}");
             }
             return list;
+        }
+        List<string> getRequiredGPUExtensions(VkPhysicalDevice device)
+        {
+            //uint instanceExtensionsCount = 0;
+            var gpuExtensions = vkEnumerateDeviceExtensionProperties(device);
+            List<string> availableExts = new();
+            List<string> reqExts = new();
+            foreach (var ext in gpuExtensions)
+            {
+                availableExts.Add(ext.GetExtensionName());
+            }
+
+            reqExts.Add(KHRSwapchainExtensionName);
+
+            Console.WriteLine("required gpu extensions:");
+            foreach (var ext in reqExts)
+            {
+                Console.WriteLine($"    {ext}");
+            }
+
+            Console.WriteLine("gpuExtensions:");
+            foreach (var ext in availableExts)
+            {
+                Console.WriteLine($"    {ext}");
+            }
+            return reqExts;
         }
 
         //Add extensions by platform
@@ -359,17 +450,17 @@ namespace vkLearn
         }
 
         // check if requeted extensions are available
-        bool checkDeviceExtensionSupport(VkPhysicalDevice device)
-        {
-            var requireExts = getRequiredExtensions();
-            var availableExts = new List<string>();
-            foreach(var availableExt in vkEnumerateDeviceExtensionProperties(device))
-            {
-                //requireExts.Remove(availableExt.GetExtensionName());
-                availableExts.Add(availableExt.GetExtensionName());
-            }
-            return requireExts.Count <= 0;
-        }
+        //bool checkDeviceExtensionSupport(VkPhysicalDevice device)
+        //{
+        //    var requireExts = getRequiredExtensions();
+        //    var availableExts = new List<string>();
+        //    foreach(var availableExt in vkEnumerateDeviceExtensionProperties(device))
+        //    {
+        //        //requireExts.Remove(availableExt.GetExtensionName());
+        //        availableExts.Add(availableExt.GetExtensionName());
+        //    }
+        //    return requireExts.Count <= 0;
+        //}
 
         SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
         {
@@ -401,34 +492,32 @@ namespace vkLearn
         {
             QueueFamilyIndices indices = new();
 
-            //uint queueFamilyCount = 0;
-            //vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, null);
+            uint queueFamilyCount = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, null);
 
-            //uint i = 0;
-            //foreach (var queueFamily in vkGetPhysicalDeviceQueueFamilyProperties(device))
-            //{
-            //    if (queueFamily.queueFlags == VkQueueFlags.Graphics)
-            //    {
-            //        indices.graphicsFamily = i;
-            //    }
+            uint i = 0;
+            foreach (var queueFamily in vkGetPhysicalDeviceQueueFamilyProperties(device))
+            {
+                if (queueFamily.queueFlags == VkQueueFlags.Graphics)
+                {
+                    indices.graphicsFamily = i;
+                }
 
-            //    VkBool32 presentSupport = true;
-            //    //vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, out presentSupport);
+                VkBool32 presentSupport = true;
+                //vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, out presentSupport);
 
-            //    if (presentSupport)
-            //    {
-            //        indices.presentFamily = i;
-            //    }
+                if (presentSupport)
+                {
+                    indices.presentFamily = i;
+                }
 
-            //    if (indices.isComplete())
-            //    {
-            //        break;
-            //    }
+                if (indices.isComplete())
+                {
+                    break;
+                }
 
-            //    i++;
-            //}
-
-
+                i++;
+            }
 
             indices.graphicsFamily = 1;
             indices.presentFamily = 1;
@@ -437,7 +526,7 @@ namespace vkLearn
         }
         
         //check which gpus are availables
-        bool isDeviceSuitable(VkPhysicalDevice device)
+      /*  bool isDeviceSuitable(VkPhysicalDevice device)
         {
             //QueueFamilyIndices indices = findQueueFamilies(device);
             //Console.WriteLine($"indices: {indices}");
@@ -449,11 +538,12 @@ namespace vkLearn
                 swapChainAdequate = swapChainSupport.formats.Count > 0 && swapChainSupport.presentModes.Count > 0;
             }
             return extensionsSupported && swapChainAdequate;
-        }
+        }*/
 
         //dispose the vkObjects
         public void Dispose()
         {
+            vkDestroySwapchainKHR(device, swapChain, null);
             vkDestroySurfaceKHR(instance, surface, null);
             vkDestroyDevice(device, null);
             vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, null);
