@@ -19,10 +19,6 @@ namespace vkLearn
         {
             "VK_LAYER_KHRONOS_validation"
         };
-        List<string> requestedExts = new()
-        {
-            KHRSwapchainExtensionName
-        };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
         VkSwapchainKHR swapChain;
         VkSurfaceKHR surface;// = VkSurfaceKHR.Null;
@@ -75,27 +71,16 @@ namespace vkLearn
                 enabledLayerCount = 0
             };
 
-            VkDebugUtilsMessengerCreateInfoEXT debug_utils_create_info = new() { sType = VkStructureType.DebugUtilsMessengerCreateInfoEXT };
-
-            VkDebugUtilsMessageSeverityFlagsEXT messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.None;
-
-            messageSeverity |= VkDebugUtilsMessageSeverityFlagsEXT.Info;
-            messageSeverity |= VkDebugUtilsMessageSeverityFlagsEXT.Error;
-            messageSeverity |= VkDebugUtilsMessageSeverityFlagsEXT.Verbose;
-            messageSeverity |= VkDebugUtilsMessageSeverityFlagsEXT.Warning;
+            VkDebugUtilsMessengerCreateInfoEXT debug_utils_create_info = new()
+            {
+                sType = VkStructureType.DebugUtilsMessengerCreateInfoEXT,
+                messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Info,
+                messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation | VkDebugUtilsMessageTypeFlagsEXT.Performance,
+                pfnUserCallback = &DebugMessengerCallback
+            };
 
             List<string> requested_validation_layers = new();
 
-
-            ReadOnlySpan<VkLayerProperties> availableLayers = vkEnumerateInstanceLayerProperties();
-
-            foreach (var layer in availableLayers)
-            {
-                if ("VK_LAYER_KHRONOS_validation" == layer.GetLayerName())
-                { 
-                    requested_validation_layers.Add("VK_LAYER_KHRONOS_validation");
-                }
-            }
 
 
             if (requested_validation_layers.Any())
@@ -103,7 +88,6 @@ namespace vkLearn
                 createInfo.enabledLayerCount = (uint)requested_validation_layers.Count;
                 createInfo.ppEnabledLayerNames = new VkStringArray(requested_validation_layers);
 
-                debug_utils_create_info.messageSeverity = messageSeverity;
                 debug_utils_create_info.messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation | VkDebugUtilsMessageTypeFlagsEXT.Performance;
                 debug_utils_create_info.pfnUserCallback = &DebugMessengerCallback;
 
@@ -156,15 +140,6 @@ namespace vkLearn
             }
 
             Console.WriteLine($"gpus count : {GPUs.Count}");
-
-            //fixed(VkPhysicalDevice* ptr = &gpu)
-            //{
-            //    vkEnumeratePhysicalDevices(instance, &devicesCount, ptr).CheckResult();
-            //}
-
-            // Interop.AllocToPointer(gpus.ToArray())).CheckResult();
-
-            //gpu = gpus.First();
 
             gpu = GPUs[0];
 
@@ -249,6 +224,7 @@ namespace vkLearn
                 imageExtent = extent,
                 imageArrayLayers = 1,
                 imageUsage = VkImageUsageFlags.ColorAttachment,
+                imageFormat = surfaceFormat.format,
                 preTransform = swapChainSupport.capabilities.currentTransform,
                 compositeAlpha = VkCompositeAlphaFlagsKHR.Opaque,
                 presentMode = presentMode,
@@ -332,6 +308,21 @@ namespace vkLearn
             }
         }
 
+        List<string> getRequestedInstanceLayers()
+        {
+            Console.WriteLine("requested layers:");
+            var req = new List<string>()
+            {
+                "VK_LAYER_KHRONOS_validation",
+            };
+
+            Console.WriteLine("available layers:");
+            foreach(var layer in vkEnumerateInstanceLayerProperties())
+            {
+                Console.WriteLine($"    {layer.GetLayerName()}");
+            }
+            return req;
+        }
         List<string> getRequiredInstanceExtensions()
         {
             //uint instanceExtensionsCount = 0;
@@ -449,12 +440,12 @@ namespace vkLearn
             return list.Any(x => x.GetLayerName() == validationLayer);
         }
 
-        // check if requeted extensions are available
+        //check if requeted extensions are available
         //bool checkDeviceExtensionSupport(VkPhysicalDevice device)
         //{
-        //    var requireExts = getRequiredExtensions();
+        //    var requireExts = getRequiredGPUExtensions(device);
         //    var availableExts = new List<string>();
-        //    foreach(var availableExt in vkEnumerateDeviceExtensionProperties(device))
+        //    foreach (var availableExt in vkEnumerateDeviceExtensionProperties(device))
         //    {
         //        //requireExts.Remove(availableExt.GetExtensionName());
         //        availableExts.Add(availableExt.GetExtensionName());
@@ -524,21 +515,21 @@ namespace vkLearn
 
             return indices;
         }
-        
+
         //check which gpus are availables
-      /*  bool isDeviceSuitable(VkPhysicalDevice device)
-        {
-            //QueueFamilyIndices indices = findQueueFamilies(device);
-            //Console.WriteLine($"indices: {indices}");
-            bool extensionsSupported = checkDeviceExtensionSupport(device);
-            bool swapChainAdequate = false;
-            if (extensionsSupported)
-            {
-                SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-                swapChainAdequate = swapChainSupport.formats.Count > 0 && swapChainSupport.presentModes.Count > 0;
-            }
-            return extensionsSupported && swapChainAdequate;
-        }*/
+        //bool isDeviceSuitable(VkPhysicalDevice device)
+        //{
+        //    QueueFamilyIndices indices = findQueueFamilies(device);
+        //    Console.WriteLine($"indices: {indices}");
+        //    bool extensionsSupported = checkDeviceExtensionSupport(device);
+        //    bool swapChainAdequate = false;
+        //    if (extensionsSupported)
+        //    {
+        //        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+        //        swapChainAdequate = swapChainSupport.formats.Count > 0 && swapChainSupport.presentModes.Count > 0;
+        //    }
+        //    return extensionsSupported && swapChainAdequate;
+        //}
 
         //dispose the vkObjects
         public void Dispose()
