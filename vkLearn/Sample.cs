@@ -6,8 +6,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Vortice.Vulkan;
+using Vortice.ShaderCompiler;
 using static Vortice.Vulkan.Vulkan;
 using static vkLearn.Win32;
+using System.IO;
 
 namespace vkLearn
 {
@@ -20,6 +22,11 @@ namespace vkLearn
             "VK_LAYER_KHRONOS_validation"
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
+
+        VkRenderPass renderPass;
+        VkPipelineLayout pipelineLayout = VkPipelineLayout.Null;
+        VkShaderModule fragShader;
+        VkShaderModule vertShader;
 
         List<VkImage> swapChainImages = new();
         List<VkImageView> swapChainImageViews = new();
@@ -48,6 +55,9 @@ namespace vkLearn
             CreateSurface();
             CreateSwapChain();
             CreateImageViews();
+            CreateGraphicsPipeline();
+            CreateRenderPass();
+
             window.Run(RenderLoop);
         }
 
@@ -286,9 +296,202 @@ namespace vkLearn
                 Console.WriteLine($"image #{i}");
             }
         }
+        void CreateGraphicsPipeline()
+        {
+            var frag = "shaders/frag.glsl";
+            var vert = "shaders/vert.glsl";
+
+            vertShader = createShaderModule(vert, ShaderKind.VertexShader);
+            fragShader = createShaderModule(frag, ShaderKind.FragmentShader);
+
+            Console.WriteLine("shaders compiled successfully");
+
+            VkPipelineShaderStageCreateInfo vertStage = new()
+            {
+                sType =  VkStructureType.PipelineShaderStageCreateInfo,
+                stage = VkShaderStageFlags.Vertex,
+                module = vertShader,
+                pName = "main".ToVk()
+            };
+
+            VkPipelineShaderStageCreateInfo fragStage = new()
+            {
+                sType = VkStructureType.PipelineShaderStageCreateInfo,
+                stage = VkShaderStageFlags.Fragment,
+                module = fragShader,
+                pName = "main".ToVk()
+            };
+
+            VkPipelineShaderStageCreateInfo[] shaderStages = { vertStage, fragStage };
+
+            VkPipelineVertexInputStateCreateInfo vertexStageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineVertexInputStateCreateInfo,
+                vertexBindingDescriptionCount = 0,
+                vertexAttributeDescriptionCount = 0,
+                pVertexAttributeDescriptions = null,
+                pVertexBindingDescriptions = null
+            };
+
+            VkPipelineInputAssemblyStateCreateInfo inputstageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineInputAssemblyStateCreateInfo,
+                topology = VkPrimitiveTopology.TriangleList,
+                primitiveRestartEnable = true
+            };
+
+            VkViewport viewport = new()
+            {
+                x = 0,
+                y = 0,
+                width = swapChainExtent.width,
+                height = swapChainExtent.height,
+                minDepth = 0,
+                maxDepth = 0
+            };
+
+            VkRect2D scissor = new()
+            {
+                offset = new(0,0),
+                extent = swapChainExtent
+            };
+
+            VkPipelineViewportStateCreateInfo viewportStageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineViewportStateCreateInfo,
+                viewportCount = 1,
+                pViewports = &viewport,
+                scissorCount = 1,
+                pScissors = &scissor
+            };
+
+            VkPipelineRasterizationStateCreateInfo rasterizerStageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineRasterizationStateCreateInfo,
+                depthClampEnable = false,
+                rasterizerDiscardEnable = false,
+                polygonMode = VkPolygonMode.Fill,
+                lineWidth = 1,
+                cullMode = VkCullModeFlags.Back,
+                frontFace = VkFrontFace.Clockwise,
+                depthBiasEnable = false,
+                depthBiasConstantFactor = 0, //optional
+                depthBiasClamp = 0, //optional
+                depthBiasSlopeFactor = 0 //optional
+            };
+
+            VkPipelineMultisampleStateCreateInfo multisampling = new()
+            {
+                sType = VkStructureType.PipelineMultisampleStateCreateInfo,
+                sampleShadingEnable = false,
+                rasterizationSamples = VkSampleCountFlags.Count1,
+                minSampleShading = 1, //optional
+                pSampleMask = null, //optional
+                alphaToCoverageEnable = false, //optional
+                alphaToOneEnable = false //optional
+            };
+
+            VkPipelineColorBlendAttachmentState colorBlendStage = new()
+            {
+                colorWriteMask = VkColorComponentFlags.R | VkColorComponentFlags.G | VkColorComponentFlags.B | VkColorComponentFlags.A,
+                blendEnable = false,
+                srcColorBlendFactor = VkBlendFactor.One, //optional
+                dstColorBlendFactor = VkBlendFactor.Zero, //optional
+                colorBlendOp = VkBlendOp.Add, //optional
+                srcAlphaBlendFactor = VkBlendFactor.One, // Optional
+                dstAlphaBlendFactor = VkBlendFactor.Zero, // Optional
+                alphaBlendOp = VkBlendOp.Add //optional
+            };
+
+            VkPipelineColorBlendStateCreateInfo colorBlending = new()
+            {
+                sType = VkStructureType.PipelineColorBlendStateCreateInfo,
+                logicOpEnable = false,
+                logicOp = VkLogicOp.Copy, //optional
+                attachmentCount = 1,
+                pAttachments = &colorBlendStage, 
+            };
+
+            colorBlending.blendConstants[0] = 0; //optional
+            colorBlending.blendConstants[1] = 0; //optional
+            colorBlending.blendConstants[2] = 0; //optional
+            colorBlending.blendConstants[3] = 0; //optional
+
+            VkDynamicState[] dynamicStates =
+            {
+                VkDynamicState.Viewport,
+                VkDynamicState.LineWidth
+            };
+
+            VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineDynamicStateCreateInfo,
+                dynamicStateCount = 2,
+                pDynamicStates = Interop.AllocToPointer(dynamicStates)
+            };
+
+            VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineLayoutCreateInfo,
+                setLayoutCount = 0, //optional
+                pSetLayouts = null, //optional
+                pushConstantRangeCount = 0, //optional
+                pPushConstantRanges = null //optional
+            };
+
+            vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, null, out pipelineLayout).CheckResult();
+
+
+        }
+        void CreateRenderPass()
+        {
+            VkAttachmentDescription attachmentDescription =
+                new(swapChainImageFormat,
+                VkSampleCountFlags.Count1,
+                VkAttachmentLoadOp.Clear,
+                VkAttachmentStoreOp.Store,
+                VkAttachmentLoadOp.DontCare,
+                VkAttachmentStoreOp.DontCare,
+                VkImageLayout.Undefined,
+                VkImageLayout.PresentSrcKHR);
+
+            VkAttachmentReference attachmentRef = new(0, VkImageLayout.AttachmentOptimalKHR);
+
+            VkSubpassDescription subpassDescription = new();
+            subpassDescription.pipelineBindPoint = VkPipelineBindPoint.Graphics;
+            subpassDescription.colorAttachmentCount = 1;
+            subpassDescription.pColorAttachments = &attachmentRef;
+
+            VkRenderPassCreateInfo createInfo = new()
+            {
+                sType = VkStructureType.RenderPassCreateInfo,
+                attachmentCount = 1,
+                pAttachments = &attachmentDescription,
+                subpassCount = 1,
+                pSubpasses = &subpassDescription
+            };
+
+            vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
+
+
+        }
         void RenderLoop()
         {
 
+        }
+
+        VkShaderModule createShaderModule(string path, ShaderKind kind)
+        {
+            VkShaderModule module = VkShaderModule.Null;
+
+            var compiler = new Compiler();
+
+            var src = File.ReadAllText(path);
+            var result = compiler.Compile(src, "", kind);
+           
+            vkCreateShaderModule(device, result.GetBytecode().ToArray(), null, out module).CheckResult();
+
+            return module;
         }
 
         VkSurfaceFormatKHR chooseSwapSurfaceFormat(List<VkSurfaceFormatKHR> availableFormats) 
@@ -303,7 +506,6 @@ namespace vkLearn
             //throw new NotImplementedException("no found suitable format");
             return availableFormats[0];
         }
-
         VkPresentModeKHR chooseSwapPresentMode(List<VkPresentModeKHR> availablePresentModes) 
         {
             foreach (var availablePresentMode in availablePresentModes)
@@ -560,6 +762,12 @@ namespace vkLearn
         //dispose the vkObjects
         public void Dispose()
         {
+
+            vkDestroyPipelineLayout(device, pipelineLayout, null);
+            vkDestroyRenderPass(device, renderPass, null);
+            vkDestroyShaderModule(device, fragShader, null);
+            vkDestroyShaderModule(device, vertShader, null);
+
             foreach(var imgView in swapChainImageViews)
             {
                 vkDestroyImageView(device, imgView, null);
