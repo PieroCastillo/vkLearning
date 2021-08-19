@@ -20,6 +20,12 @@ namespace vkLearn
             "VK_LAYER_KHRONOS_validation"
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
+
+        List<VkImage> swapImages = new();
+        VkSurfaceFormatKHR surfaceFormat;
+        VkPresentModeKHR presentMode;
+        VkExtent2D extent;
+
         VkSwapchainKHR swapChain;
         VkSurfaceKHR surface;// = VkSurfaceKHR.Null;
         VkQueue queue = VkQueue.Null;
@@ -38,6 +44,7 @@ namespace vkLearn
             CreateLogicalDevice();
             CreateSurface();
             CreateSwapChain();
+            CreateImageViews();
             window.Run(RenderLoop);
         }
 
@@ -188,7 +195,6 @@ namespace vkLearn
         void CreateSwapChain()
         {
             SwapChainSupportDetails swapChainSupport = querySwapChainSupport(gpu);
-            var images = new List<VkImage>();
             VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
             VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
             VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
@@ -246,11 +252,14 @@ namespace vkLearn
 
             foreach(var image in vkGetSwapchainImagesKHR(device, swapChain))
             {
-                images.Add(image);
+                swapImages.Add(image);
             }
-            imageCount = (uint)images.Count;
+            imageCount = (uint)swapImages.Count;
         }
+        void CreateImageViews()
+        {
 
+        }
         void RenderLoop()
         {
 
