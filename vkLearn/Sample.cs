@@ -21,10 +21,13 @@ namespace vkLearn
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
 
-        List<VkImage> swapImages = new();
+        List<VkImage> swapChainImages = new();
+        List<VkImageView> swapChainImageViews = new();
+
         VkSurfaceFormatKHR surfaceFormat;
         VkPresentModeKHR presentMode;
-        VkExtent2D extent;
+        VkFormat swapChainImageFormat;
+        VkExtent2D swapChainExtent;
 
         VkSwapchainKHR swapChain;
         VkSurfaceKHR surface;// = VkSurfaceKHR.Null;
@@ -195,9 +198,9 @@ namespace vkLearn
         void CreateSwapChain()
         {
             SwapChainSupportDetails swapChainSupport = querySwapChainSupport(gpu);
-            VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-            VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-            VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+            surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+            presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+            swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities);
 
             uint imageCount = swapChainSupport.capabilities.minImageCount + 1;
 
@@ -212,7 +215,7 @@ namespace vkLearn
                 surface = surface,
                 minImageCount = imageCount,
                 imageColorSpace = surfaceFormat.colorSpace,
-                imageExtent = extent,
+                imageExtent = swapChainExtent,
                 imageArrayLayers = 1,
                 imageUsage = VkImageUsageFlags.ColorAttachment,
                 imageFormat = surfaceFormat.format,
@@ -252,13 +255,36 @@ namespace vkLearn
 
             foreach(var image in vkGetSwapchainImagesKHR(device, swapChain))
             {
-                swapImages.Add(image);
+                swapChainImages.Add(image);
             }
-            imageCount = (uint)swapImages.Count;
+            imageCount = (uint)swapChainImages.Count;
+            swapChainImageFormat = surfaceFormat.format;
         }
         void CreateImageViews()
         {
+            swapChainImageViews.Clear();
+            for (int i = 0;i < swapChainImages.Count;i++)
+            {
+                VkImageViewCreateInfo createInfo = new()
+                {
+                    sType = VkStructureType.ImageViewCreateInfo,
+                    image = swapChainImages[i],
+                    viewType = VkImageViewType.Image2D,
+                    format = swapChainImageFormat,
+                };
+                createInfo.components = new(
+                    VkComponentSwizzle.Identity,
+                    VkComponentSwizzle.Identity,
+                    VkComponentSwizzle.Identity,
+                    VkComponentSwizzle.Identity);
 
+                createInfo.subresourceRange = new(VkImageAspectFlags.Color, 0, 1, 0, 1);
+
+                vkCreateImageView(device, &createInfo, null, out VkImageView imageView);
+                swapChainImageViews.Add(imageView);
+
+                Console.WriteLine($"image #{i}");
+            }
         }
         void RenderLoop()
         {
@@ -534,6 +560,11 @@ namespace vkLearn
         //dispose the vkObjects
         public void Dispose()
         {
+            foreach(var imgView in swapChainImageViews)
+            {
+                vkDestroyImageView(device, imgView, null);
+            }
+
             vkDestroySwapchainKHR(device, swapChain, null);
             vkDestroySurfaceKHR(instance, surface, null);
             vkDestroyDevice(device, null);
