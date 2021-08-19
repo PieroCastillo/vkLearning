@@ -74,26 +74,11 @@ namespace vkLearn
             VkDebugUtilsMessengerCreateInfoEXT debug_utils_create_info = new()
             {
                 sType = VkStructureType.DebugUtilsMessengerCreateInfoEXT,
-                messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Info,
+                messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Info | VkDebugUtilsMessageSeverityFlagsEXT.Warning,
                 messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation | VkDebugUtilsMessageTypeFlagsEXT.Performance,
                 pfnUserCallback = &DebugMessengerCallback
             };
 
-            List<string> requested_validation_layers = new();
-
-
-
-            if (requested_validation_layers.Any())
-            {
-                createInfo.enabledLayerCount = (uint)requested_validation_layers.Count;
-                createInfo.ppEnabledLayerNames = new VkStringArray(requested_validation_layers);
-
-                debug_utils_create_info.messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation | VkDebugUtilsMessageTypeFlagsEXT.Performance;
-                debug_utils_create_info.pfnUserCallback = &DebugMessengerCallback;
-
-                createInfo.pNext = &debug_utils_create_info;
-
-            }
 
             if (enableValidationLayers)
             {
@@ -110,10 +95,10 @@ namespace vkLearn
             vkCreateInstance(&createInfo, null, out instance).CheckResult();
             vkLoadInstance(instance);
 
-            if (requested_validation_layers.Any())
-            {
-                vkCreateDebugUtilsMessengerEXT(instance, &debug_utils_create_info, null, out debugMessenger).CheckResult();
-            }
+            //if (requested_validation_layers.Any())
+            //{
+             //  vkCreateDebugUtilsMessengerEXT(instance, &debug_utils_create_info, null, out debugMessenger).CheckResult();
+            //}
 
             Console.WriteLine("instance created");
         }
@@ -203,7 +188,7 @@ namespace vkLearn
         void CreateSwapChain()
         {
             SwapChainSupportDetails swapChainSupport = querySwapChainSupport(gpu);
-
+            var images = new List<VkImage>();
             VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
             VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
             VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
@@ -258,6 +243,12 @@ namespace vkLearn
             vkCreateSwapchainKHR(device, &createInfo, null, out swapChain).CheckResult();
 
             Console.WriteLine("swapchain created successfully!");
+
+            foreach(var image in vkGetSwapchainImagesKHR(device, swapChain))
+            {
+                images.Add(image);
+            }
+            imageCount = (uint)images.Count;
         }
 
         void RenderLoop()
@@ -546,9 +537,8 @@ namespace vkLearn
                                                    VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* userData)
         {
 
-
             uint[] ignored_ids = new[]
-            {
+                    {
                 0xc05b3a9du,
                 0x2864340eu,
                 0xbfcfaec2u,
@@ -571,6 +561,38 @@ namespace vkLearn
 
             string? message = Interop.String.FromPointer(pCallbackData->pMessage);
 
+            if (messageTypes == VkDebugUtilsMessageTypeFlagsEXT.Validation)
+            {
+                if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Info)
+                {
+                    ConsoleLog.Info($"Vulkan", $" {message}");
+                }
+                else if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Warning)
+                {
+                    ConsoleLog.Warn("Vulkan", $" {message}");
+                }
+                else if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Error)
+                {
+                    ConsoleLog.Error($"Vulkan", $" {message}");
+                }
+
+            }
+            else
+            {
+                if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Info)
+                {
+                    ConsoleLog.Info($"Vulkan", $" {message}");
+                }
+                else if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Warning)
+                {
+                    ConsoleLog.Warn("Vulkan", $" {message}");
+                }
+                else if (messageSeverity == VkDebugUtilsMessageSeverityFlagsEXT.Error)
+                {
+                    ConsoleLog.Error($"Vulkan", $" {message}");
+                }
+
+            }
 
             return VK_FALSE;
         }
