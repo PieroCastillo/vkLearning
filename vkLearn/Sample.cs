@@ -593,6 +593,7 @@ namespace vkLearn
             {
                 DrawFrame();
             }
+            vkDeviceWaitIdle(device);
         }
 
         void DrawFrame()
@@ -665,6 +666,7 @@ namespace vkLearn
                 };
                 vkQueuePresentKHR(queue, &present);
             }
+            vkQueueWaitIdle(queue);
         }
 
         VkShaderModule createShaderModule(string path, ShaderKind kind)
