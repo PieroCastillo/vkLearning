@@ -23,8 +23,12 @@ namespace vkLearn
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
 
+        List<VkFramebuffer> swapChainFramebuffers = new();
+
+        VkPipeline graphicsPipeline;
         VkRenderPass renderPass;
         VkPipelineLayout pipelineLayout = VkPipelineLayout.Null;
+
         VkShaderModule fragShader;
         VkShaderModule vertShader;
 
@@ -55,8 +59,9 @@ namespace vkLearn
             CreateSurface();
             CreateSwapChain();
             CreateImageViews();
-            CreateGraphicsPipeline();
             CreateRenderPass();
+            CreateGraphicsPipeline();
+            CreateFramebuffer();
 
             window.Run(RenderLoop);
         }
@@ -296,6 +301,36 @@ namespace vkLearn
                 Console.WriteLine($"image #{i}");
             }
         }
+        void CreateRenderPass()
+        {
+            VkAttachmentDescription attachmentDescription =
+                new(swapChainImageFormat,
+                VkSampleCountFlags.Count1,
+                VkAttachmentLoadOp.Clear,
+                VkAttachmentStoreOp.Store,
+                VkAttachmentLoadOp.DontCare,
+                VkAttachmentStoreOp.DontCare,
+                VkImageLayout.Undefined,
+                VkImageLayout.PresentSrcKHR);
+
+            VkAttachmentReference attachmentRef = new(0, VkImageLayout.AttachmentOptimalKHR);
+
+            VkSubpassDescription subpassDescription = new();
+            subpassDescription.pipelineBindPoint = VkPipelineBindPoint.Graphics;
+            subpassDescription.colorAttachmentCount = 1;
+            subpassDescription.pColorAttachments = &attachmentRef;
+
+            VkRenderPassCreateInfo createInfo = new()
+            {
+                sType = VkStructureType.RenderPassCreateInfo,
+                attachmentCount = 1,
+                pAttachments = &attachmentDescription,
+                subpassCount = 1,
+                pSubpasses = &subpassDescription
+            };
+
+            vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
+        }     
         void CreateGraphicsPipeline()
         {
             var frag = "shaders/frag.glsl";
@@ -441,39 +476,58 @@ namespace vkLearn
 
             vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, null, out pipelineLayout).CheckResult();
 
-
-        }
-        void CreateRenderPass()
-        {
-            VkAttachmentDescription attachmentDescription =
-                new(swapChainImageFormat,
-                VkSampleCountFlags.Count1,
-                VkAttachmentLoadOp.Clear,
-                VkAttachmentStoreOp.Store,
-                VkAttachmentLoadOp.DontCare,
-                VkAttachmentStoreOp.DontCare,
-                VkImageLayout.Undefined,
-                VkImageLayout.PresentSrcKHR);
-
-            VkAttachmentReference attachmentRef = new(0, VkImageLayout.AttachmentOptimalKHR);
-
-            VkSubpassDescription subpassDescription = new();
-            subpassDescription.pipelineBindPoint = VkPipelineBindPoint.Graphics;
-            subpassDescription.colorAttachmentCount = 1;
-            subpassDescription.pColorAttachments = &attachmentRef;
-
-            VkRenderPassCreateInfo createInfo = new()
+            VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo = new()
             {
-                sType = VkStructureType.RenderPassCreateInfo,
-                attachmentCount = 1,
-                pAttachments = &attachmentDescription,
-                subpassCount = 1,
-                pSubpasses = &subpassDescription
+                sType = VkStructureType.GraphicsPipelineCreateInfo,
+                stageCount = 2,
+                pStages = Interop.AllocToPointer(shaderStages.ToArray()),
+                pInputAssemblyState = &inputstageCreateInfo,
+                pVertexInputState = &vertexStageCreateInfo,
+                pViewportState = &viewportStageCreateInfo,
+                pRasterizationState = &rasterizerStageCreateInfo,
+                pMultisampleState = &multisampling,
+                pDepthStencilState = null, //optional
+                pColorBlendState = &colorBlending,
+                pDynamicState = null, //optional
+                layout = pipelineLayout,
+                renderPass = renderPass,
+                subpass = 0,
+                basePipelineHandle = VkPipeline.Null, //optional
+                basePipelineIndex = -1 //optional
             };
 
-            vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
+            vkCreateGraphicsPipeline(device, graphicsPipelineCreateInfo, out graphicsPipeline).CheckResult();
 
+            Console.WriteLine("graphics pipeline created correctly");
 
+            vkDestroyShaderModule(device, fragShader, null);
+            vkDestroyShaderModule(device, vertShader, null);
+        }
+        void CreateFramebuffer()
+        {
+            for(int i = 0; i < swapChainImages.Count; i++)
+            {
+                VkImageView[] attachments =
+                {
+                    swapChainImageViews[i]
+                };
+
+                VkFramebufferCreateInfo createInfo = new()
+                {
+                    sType = VkStructureType.FramebufferCreateInfo,
+                    renderPass = renderPass,
+                    attachmentCount = 1,
+                    pAttachments = Interop.AllocToPointer(attachments),
+                    width = swapChainExtent.width,
+                    height = swapChainExtent.height,
+                    layers = 1
+                };
+
+                vkCreateFramebuffer(device, &createInfo, null, out VkFramebuffer fb).CheckResult();
+                swapChainFramebuffers.Add(fb);
+
+                Console.WriteLine($"framebuffer #{i} of {swapChainImages.Count} created successfully");
+            }
         }
         void RenderLoop()
         {
@@ -762,12 +816,9 @@ namespace vkLearn
         //dispose the vkObjects
         public void Dispose()
         {
-
+            vkDestroyPipeline(device, graphicsPipeline, null);
             vkDestroyPipelineLayout(device, pipelineLayout, null);
             vkDestroyRenderPass(device, renderPass, null);
-            vkDestroyShaderModule(device, fragShader, null);
-            vkDestroyShaderModule(device, vertShader, null);
-
             foreach(var imgView in swapChainImageViews)
             {
                 vkDestroyImageView(device, imgView, null);
