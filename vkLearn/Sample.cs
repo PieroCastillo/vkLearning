@@ -22,6 +22,9 @@ namespace vkLearn
             "VK_LAYER_KHRONOS_validation"
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
+        
+        VkSemaphore imageAvailableSemaphore;
+        VkSemaphore renderFinishedSemaphore;
 
         List<VkCommandBuffer> cmdBuffers = new();
         VkCommandPool cmdPool;
@@ -67,8 +70,9 @@ namespace vkLearn
             CreateFramebuffer();
             CreateCommandPool();
             CreateCommandBuffers();
+            CreateSemaphores();
 
-            window.Run(RenderLoop);
+            RenderLoop();
         }
 
         void Init()
@@ -325,13 +329,24 @@ namespace vkLearn
             subpassDescription.colorAttachmentCount = 1;
             subpassDescription.pColorAttachments = &attachmentRef;
 
+            VkSubpassDependency dependency = new()
+            {
+                srcSubpass = SubpassExternal,
+                dstSubpass = 0,
+                srcStageMask = VkPipelineStageFlags.ColorAttachmentOutput,
+                srcAccessMask = 0,
+                dstStageMask = VkPipelineStageFlags.ColorAttachmentOutput,
+            };
+
             VkRenderPassCreateInfo createInfo = new()
             {
                 sType = VkStructureType.RenderPassCreateInfo,
                 attachmentCount = 1,
                 pAttachments = &attachmentDescription,
                 subpassCount = 1,
-                pSubpasses = &subpassDescription
+                pSubpasses = &subpassDescription,
+                dependencyCount = 1,
+                pDependencies = &dependency
             };
 
             vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
@@ -559,14 +574,59 @@ namespace vkLearn
                 commandBufferCount = (uint)cmdBuffers.Count
             };
 
-            vkAllocateCommandBuffers(device, &cmdAllocInfo, Interop.AllocToPointer(cmdBuffers.ToArray()));
+            for(int i = 0; i < swapChainImages.Count; i++)
+            {
+                VkCommandBuffer cmd;
+                vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmd);
+                cmdBuffers.Add(cmd);
+            }
+        }
+        void CreateSemaphores()
+        {
+            vkCreateSemaphore(device, out imageAvailableSemaphore).CheckResult();
+            vkCreateSemaphore(device, out renderFinishedSemaphore).CheckResult();
+        }
 
-            for(int i = 0; i < cmdBuffers.Count; i++)
+        void RenderLoop()
+        {
+            while (window.WindowShouldClose())
+            {
+                DrawFrame();
+            }
+        }
+
+        void DrawFrame()
+        {
+            uint imgIndex = 0;
+            vkAcquireNextImageKHR(device, swapChain, ulong.MaxValue, imageAvailableSemaphore, VkFence.Null, out imgIndex);
+
+            VkSubmitInfo submitInfo = new()
+            {
+                sType = VkStructureType.SubmitInfo
+            };
+
+            VkSemaphore[] waitSemaphores = { imageAvailableSemaphore };
+            VkPipelineStageFlags[] waitStages = { VkPipelineStageFlags.ColorAttachmentOutput };
+            submitInfo.waitSemaphoreCount = 1;
+            submitInfo.pWaitSemaphores = Interop.AllocToPointer(waitSemaphores);
+            submitInfo.pWaitDstStageMask = Interop.AllocToPointer(waitStages);
+            submitInfo.commandBufferCount = 1;
+            Console.WriteLine($"img index : {imgIndex}");
+            var cmd = cmdBuffers[(int)imgIndex];
+            submitInfo.pCommandBuffers = &cmd;
+
+            VkSemaphore[] signalSemaphores = { renderFinishedSemaphore };
+            submitInfo.signalSemaphoreCount = 1;
+            submitInfo.pSignalSemaphores = Interop.AllocToPointer(signalSemaphores);
+
+            vkQueueSubmit(queue, submitInfo, VkFence.Null);
+
+            for (int i = 0; i < cmdBuffers.Count; i++)
             {
                 VkCommandBufferBeginInfo beginInfo = new()
                 {
                     sType = VkStructureType.CommandBufferBeginInfo,
-                    flags = VkCommandBufferUsageFlags.None,
+                    flags = VkCommandBufferUsageFlags.RenderPassContinue,
                     pInheritanceInfo = null
                 };
 
@@ -578,21 +638,33 @@ namespace vkLearn
                     sType = VkStructureType.RenderPassBeginInfo,
                     renderPass = renderPass,
                     framebuffer = swapChainFramebuffers[i],
-                    renderArea = new VkRect2D(0,0, swapChainExtent.width, swapChainExtent.height),
+                    renderArea = new VkRect2D(0, 0, swapChainExtent.width, swapChainExtent.height),
                     clearValueCount = 1,
-                    pClearValues = &clearColor
+                    pClearValues = &clearColor,
                 };
+
+
 
                 vkCmdBeginRenderPass(cmdBuffers[i], &passBeginInfo, VkSubpassContents.Inline);
                 vkCmdBindPipeline(cmdBuffers[i], VkPipelineBindPoint.Graphics, graphicsPipeline);
                 vkCmdEndRenderPass(cmdBuffers[i]);
                 vkEndCommandBuffer(cmdBuffers[i]).CheckResult();
             }
-        }
-
-        void RenderLoop()
-        {
-
+            
+            fixed(VkSwapchainKHR* swapPtr = &swapChain)
+            {
+                VkPresentInfoKHR present = new()
+                {
+                    sType = VkStructureType.PresentInfoKHR,
+                    waitSemaphoreCount = 1,
+                    pWaitSemaphores = Interop.AllocToPointer(signalSemaphores),
+                    swapchainCount = 1,
+                    pSwapchains = swapPtr,
+                    pImageIndices = &imgIndex,
+                    //pResults = null //optional
+                };
+                vkQueuePresentKHR(queue, &present);
+            }
         }
 
         VkShaderModule createShaderModule(string path, ShaderKind kind)
@@ -876,6 +948,9 @@ namespace vkLearn
         //dispose the vkObjects
         public void Dispose()
         {
+            vkDestroySemaphore(device, imageAvailableSemaphore, null);
+            vkDestroySemaphore(device, renderFinishedSemaphore, null);
+
             vkDestroyCommandPool(device, cmdPool, null);
 
             foreach(var fb in swapChainFramebuffers)

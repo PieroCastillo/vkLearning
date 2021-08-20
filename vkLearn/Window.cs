@@ -66,15 +66,22 @@ namespace vkLearn
 			return (0);
 		}
 
-		public void Run(Action onRender)
+		//public void Run(Action onRender)
+  //      {
+		//	while ((rv = Win32.GetMessage(out Msg, IntPtr.Zero, 0, 0)) > 0)
+		//	{
+
+		//		onRender.Invoke();
+		//	}
+  //      }
+
+		public bool WindowShouldClose()
         {
-			while ((rv = Win32.GetMessage(out Msg, IntPtr.Zero, 0, 0)) > 0)
-			{
-				Win32.TranslateMessage(ref Msg);
-				Win32.DispatchMessage(ref Msg);
-				onRender.Invoke();
-			}
-        }
+			var close = (rv = Win32.GetMessage(out Msg, IntPtr.Zero, 0, 0)) > 0;
+			Win32.TranslateMessage(ref Msg);
+			Win32.DispatchMessage(ref Msg);
+			return close;
+		}
 
 		private IntPtr WndProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
 		{
