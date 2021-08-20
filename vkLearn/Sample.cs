@@ -23,6 +23,9 @@ namespace vkLearn
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
 
+        List<VkCommandBuffer> cmdBuffers = new();
+        VkCommandPool cmdPool;
+
         List<VkFramebuffer> swapChainFramebuffers = new();
 
         VkPipeline graphicsPipeline;
@@ -54,14 +57,16 @@ namespace vkLearn
         {
             window = new Window(600, 800, "learn");
             Init();
+            CreateSurface();
             pickPhys();
             CreateLogicalDevice();
-            CreateSurface();
             CreateSwapChain();
             CreateImageViews();
             CreateRenderPass();
             CreateGraphicsPipeline();
             CreateFramebuffer();
+            CreateCommandPool();
+            CreateCommandBuffers();
 
             window.Run(RenderLoop);
         }
@@ -79,9 +84,9 @@ namespace vkLearn
             {
                 sType = VkStructureType.ApplicationInfo,
                 pApplicationName = "vkLearning".ToVk(),
-                applicationVersion = new VkVersion(0,0,1),
+                applicationVersion = new VkVersion(0, 0, 1),
                 pEngineName = "Learn".ToVk(),
-                engineVersion = new VkVersion(0,1,0),
+                engineVersion = new VkVersion(0, 1, 0),
                 apiVersion = VkVersion.Version_1_2
             };
 
@@ -122,7 +127,7 @@ namespace vkLearn
 
             //if (requested_validation_layers.Any())
             //{
-             //  vkCreateDebugUtilsMessengerEXT(instance, &debug_utils_create_info, null, out debugMessenger).CheckResult();
+            //  vkCreateDebugUtilsMessengerEXT(instance, &debug_utils_create_info, null, out debugMessenger).CheckResult();
             //}
 
             Console.WriteLine("instance created");
@@ -134,18 +139,18 @@ namespace vkLearn
 
             vkEnumeratePhysicalDevices(instance, &devicesCount, null).CheckResult();
 
-            if(devicesCount == 0)
+            if (devicesCount == 0)
             {
                 throw new PlatformNotSupportedException("failed to find GPU-Vulkan compatible");
             }
 
             var gpus = vkEnumeratePhysicalDevices(instance);
 
-            foreach(var gpu in gpus)
+            foreach (var gpu in gpus)
             {
                 //if (isDeviceSuitable(gpu))
                 //{
-                   GPUs.Add(gpu);
+                GPUs.Add(gpu);
                 //}
             }
 
@@ -246,20 +251,20 @@ namespace vkLearn
             };
 
             QueueFamilyIndices indices = findQueueFamilies(gpu);
-            uint[] queueFamilyIndices = { indices.graphicsFamily.Value, indices.presentFamily.Value };
+            //List<uint> queueFamilyIndices = new() { indices.graphicsFamily.Value, indices.presentFamily.Value };
 
-            if (indices.graphicsFamily != indices.presentFamily)
-            {
-                createInfo.imageSharingMode = VkSharingMode.Concurrent;
-                createInfo.queueFamilyIndexCount = 2;
-                createInfo.pQueueFamilyIndices = Interop.AllocToPointer(queueFamilyIndices);
-            }
-            else
-            {
+            //if (indices.graphicsFamily != indices.presentFamily)
+            //{
+            //    createInfo.imageSharingMode = VkSharingMode.Concurrent;
+            //    createInfo.queueFamilyIndexCount = 2;
+            //    createInfo.pQueueFamilyIndices = Interop.AllocToPointer(queueFamilyIndices.ToArray());
+            //}
+            //else
+            //{
                 createInfo.imageSharingMode = VkSharingMode.Exclusive;
                 createInfo.queueFamilyIndexCount = 0; // Optional
                 createInfo.pQueueFamilyIndices = null; // Optional
-            }
+            //}
 
 
             Console.WriteLine("before create swapchain");
@@ -268,7 +273,7 @@ namespace vkLearn
 
             Console.WriteLine("swapchain created successfully!");
 
-            foreach(var image in vkGetSwapchainImagesKHR(device, swapChain))
+            foreach (var image in vkGetSwapchainImagesKHR(device, swapChain))
             {
                 swapChainImages.Add(image);
             }
@@ -278,7 +283,7 @@ namespace vkLearn
         void CreateImageViews()
         {
             swapChainImageViews.Clear();
-            for (int i = 0;i < swapChainImages.Count;i++)
+            for (int i = 0; i < swapChainImages.Count; i++)
             {
                 VkImageViewCreateInfo createInfo = new()
                 {
@@ -330,7 +335,7 @@ namespace vkLearn
             };
 
             vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
-        }     
+        }
         void CreateGraphicsPipeline()
         {
             var frag = "shaders/frag.glsl";
@@ -343,7 +348,7 @@ namespace vkLearn
 
             VkPipelineShaderStageCreateInfo vertStage = new()
             {
-                sType =  VkStructureType.PipelineShaderStageCreateInfo,
+                sType = VkStructureType.PipelineShaderStageCreateInfo,
                 stage = VkShaderStageFlags.Vertex,
                 module = vertShader,
                 pName = "main".ToVk()
@@ -387,7 +392,7 @@ namespace vkLearn
 
             VkRect2D scissor = new()
             {
-                offset = new(0,0),
+                offset = new(0, 0),
                 extent = swapChainExtent
             };
 
@@ -444,7 +449,7 @@ namespace vkLearn
                 logicOpEnable = false,
                 logicOp = VkLogicOp.Copy, //optional
                 attachmentCount = 1,
-                pAttachments = &colorBlendStage, 
+                pAttachments = &colorBlendStage,
             };
 
             colorBlending.blendConstants[0] = 0; //optional
@@ -505,7 +510,7 @@ namespace vkLearn
         }
         void CreateFramebuffer()
         {
-            for(int i = 0; i < swapChainImages.Count; i++)
+            for (int i = 0; i < swapChainImages.Count; i++)
             {
                 VkImageView[] attachments =
                 {
@@ -529,6 +534,62 @@ namespace vkLearn
                 Console.WriteLine($"framebuffer #{i} of {swapChainImages.Count} created successfully");
             }
         }
+        void CreateCommandPool()
+        {
+            var queryIndices = findQueueFamilies(gpu);
+
+            VkCommandPoolCreateInfo cmdPoolCreateInfo = new()
+            {
+                sType = VkStructureType.CommandPoolCreateInfo,
+                queueFamilyIndex = queryIndices.graphicsFamily.Value,
+                flags = VkCommandPoolCreateFlags.None
+            };
+
+            vkCreateCommandPool(device, &cmdPoolCreateInfo, null, out cmdPool).CheckResult();
+
+            Console.WriteLine("CommandPool created successfully!");
+        }
+        void CreateCommandBuffers()
+        {
+            VkCommandBufferAllocateInfo cmdAllocInfo = new()
+            {
+                sType = VkStructureType.CommandBufferAllocateInfo,
+                commandPool = cmdPool,
+                level = VkCommandBufferLevel.Primary,
+                commandBufferCount = (uint)cmdBuffers.Count
+            };
+
+            vkAllocateCommandBuffers(device, &cmdAllocInfo, Interop.AllocToPointer(cmdBuffers.ToArray()));
+
+            for(int i = 0; i < cmdBuffers.Count; i++)
+            {
+                VkCommandBufferBeginInfo beginInfo = new()
+                {
+                    sType = VkStructureType.CommandBufferBeginInfo,
+                    flags = VkCommandBufferUsageFlags.None,
+                    pInheritanceInfo = null
+                };
+
+                vkBeginCommandBuffer(cmdBuffers[i], &beginInfo).CheckResult();
+
+                VkClearValue clearColor = new(new VkClearColorValue(.5f, .5f, .5f, 1));
+                VkRenderPassBeginInfo passBeginInfo = new()
+                {
+                    sType = VkStructureType.RenderPassBeginInfo,
+                    renderPass = renderPass,
+                    framebuffer = swapChainFramebuffers[i],
+                    renderArea = new VkRect2D(0,0, swapChainExtent.width, swapChainExtent.height),
+                    clearValueCount = 1,
+                    pClearValues = &clearColor
+                };
+
+                vkCmdBeginRenderPass(cmdBuffers[i], &passBeginInfo, VkSubpassContents.Inline);
+                vkCmdBindPipeline(cmdBuffers[i], VkPipelineBindPoint.Graphics, graphicsPipeline);
+                vkCmdEndRenderPass(cmdBuffers[i]);
+                vkEndCommandBuffer(cmdBuffers[i]).CheckResult();
+            }
+        }
+
         void RenderLoop()
         {
 
@@ -542,17 +603,17 @@ namespace vkLearn
 
             var src = File.ReadAllText(path);
             var result = compiler.Compile(src, "", kind);
-           
+
             vkCreateShaderModule(device, result.GetBytecode().ToArray(), null, out module).CheckResult();
 
             return module;
         }
 
-        VkSurfaceFormatKHR chooseSwapSurfaceFormat(List<VkSurfaceFormatKHR> availableFormats) 
+        VkSurfaceFormatKHR chooseSwapSurfaceFormat(List<VkSurfaceFormatKHR> availableFormats)
         {
-            foreach(var format in availableFormats)
+            foreach (var format in availableFormats)
             {
-                if(format.format == VkFormat.B8G8R8A8SRgb && format.colorSpace == VkColorSpaceKHR.SrgbNonLinear)
+                if (format.format == VkFormat.B8G8R8A8SRgb && format.colorSpace == VkColorSpaceKHR.SrgbNonLinear)
                 {
                     return format;
                 }
@@ -560,11 +621,11 @@ namespace vkLearn
             //throw new NotImplementedException("no found suitable format");
             return availableFormats[0];
         }
-        VkPresentModeKHR chooseSwapPresentMode(List<VkPresentModeKHR> availablePresentModes) 
+        VkPresentModeKHR chooseSwapPresentMode(List<VkPresentModeKHR> availablePresentModes)
         {
             foreach (var availablePresentMode in availablePresentModes)
             {
-                if (availablePresentMode == VkPresentModeKHR.Mailbox) 
+                if (availablePresentMode == VkPresentModeKHR.Mailbox)
                 {
                     return availablePresentMode;
                 }
@@ -572,9 +633,9 @@ namespace vkLearn
 
             return VkPresentModeKHR.Fifo;
         }
-        VkExtent2D chooseSwapExtent(VkSurfaceCapabilitiesKHR capabilities) 
+        VkExtent2D chooseSwapExtent(VkSurfaceCapabilitiesKHR capabilities)
         {
-            if(capabilities.currentExtent.width != uint.MaxValue)
+            if (capabilities.currentExtent.width != uint.MaxValue)
             {
                 return capabilities.currentExtent;
             }
@@ -599,7 +660,7 @@ namespace vkLearn
             };
 
             Console.WriteLine("available layers:");
-            foreach(var layer in vkEnumerateInstanceLayerProperties())
+            foreach (var layer in vkEnumerateInstanceLayerProperties())
             {
                 Console.WriteLine($"    {layer.GetLayerName()}");
             }
@@ -746,13 +807,13 @@ namespace vkLearn
             uint formatCount = 0;
             var formats = vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface);
             //var formats = new List<VkSurfaceFormatKHR>();
-            foreach(var format in formats)
+            foreach (var format in formats)
             {
                 details.formats.Add(format);
             }
 
             var presentModes = vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface);
-            foreach(var presentMode in presentModes)
+            foreach (var presentMode in presentModes)
             {
                 details.presentModes.Add(presentMode);
             }
@@ -761,23 +822,22 @@ namespace vkLearn
         }
 
         //no c para que es esto ajajkkjaskj
-        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
+        
+        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice _gpu)
         {
             QueueFamilyIndices indices = new();
 
-            uint queueFamilyCount = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, null);
-
             uint i = 0;
-            foreach (var queueFamily in vkGetPhysicalDeviceQueueFamilyProperties(device))
+            foreach (var queueFamily in vkGetPhysicalDeviceQueueFamilyProperties(_gpu))
             {
                 if (queueFamily.queueFlags == VkQueueFlags.Graphics)
                 {
                     indices.graphicsFamily = i;
                 }
 
-                VkBool32 presentSupport = true;
-                //vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, out presentSupport);
+                Console.WriteLine($"index #{i}, queueFlags is {queueFamily.queueFlags}");
+
+                vkGetPhysicalDeviceSurfaceSupportKHR(_gpu, i, surface, out VkBool32 presentSupport).CheckResult();
 
                 if (presentSupport)
                 {
@@ -816,6 +876,13 @@ namespace vkLearn
         //dispose the vkObjects
         public void Dispose()
         {
+            vkDestroyCommandPool(device, cmdPool, null);
+
+            foreach(var fb in swapChainFramebuffers)
+            {
+                vkDestroyFramebuffer(device, fb, null);
+            }
+
             vkDestroyPipeline(device, graphicsPipeline, null);
             vkDestroyPipelineLayout(device, pipelineLayout, null);
             vkDestroyRenderPass(device, renderPass, null);
