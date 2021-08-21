@@ -10,6 +10,8 @@ using Vortice.ShaderCompiler;
 using static Vortice.Vulkan.Vulkan;
 using static vkLearn.Win32;
 using System.IO;
+using System.Collections;
+using System.Diagnostics;
 
 namespace vkLearn
 {
@@ -22,11 +24,12 @@ namespace vkLearn
             "VK_LAYER_KHRONOS_validation"
         };
         string validationLayer = "VK_LAYER_KHRONOS_validation";
-        
+
         VkSemaphore imageAvailableSemaphore;
         VkSemaphore renderFinishedSemaphore;
 
-        List<VkCommandBuffer> cmdBuffers = new();
+        List<VkCommandBuffer> cmdBuffers;// Array.Empty<VkCommandBuffer>();
+        //VkCommandBuffer cmd;
         VkCommandPool cmdPool;
 
         List<VkFramebuffer> swapChainFramebuffers = new();
@@ -214,7 +217,7 @@ namespace vkLearn
             {
                 sType = VkStructureType.Win32SurfaceCreateInfoKHR,
                 hwnd = window.hwnd,
-                hinstance = GetModuleHandle(null)
+                hinstance = (nint)Process.GetCurrentProcess().Handle.ToPointer()// GetModuleHandle(null)
             };
             vkCreateWin32SurfaceKHR(instance, &win32info, null, out surface).CheckResult();
             Console.WriteLine("surface created successfully");
@@ -255,20 +258,20 @@ namespace vkLearn
             };
 
             QueueFamilyIndices indices = findQueueFamilies(gpu);
-            //List<uint> queueFamilyIndices = new() { indices.graphicsFamily.Value, indices.presentFamily.Value };
+            List<uint> queueFamilyIndices = new() { indices.graphicsFamily.Value, indices.presentFamily.Value };
 
-            //if (indices.graphicsFamily != indices.presentFamily)
-            //{
-            //    createInfo.imageSharingMode = VkSharingMode.Concurrent;
-            //    createInfo.queueFamilyIndexCount = 2;
-            //    createInfo.pQueueFamilyIndices = Interop.AllocToPointer(queueFamilyIndices.ToArray());
-            //}
-            //else
-            //{
+            if (indices.graphicsFamily != indices.presentFamily)
+            {
+                createInfo.imageSharingMode = VkSharingMode.Concurrent;
+                createInfo.queueFamilyIndexCount = 2;
+                createInfo.pQueueFamilyIndices = Interop.AllocToPointer(queueFamilyIndices.ToArray());
+            }
+            else
+            {
                 createInfo.imageSharingMode = VkSharingMode.Exclusive;
                 createInfo.queueFamilyIndexCount = 0; // Optional
                 createInfo.pQueueFamilyIndices = null; // Optional
-            //}
+            }
 
 
             Console.WriteLine("before create swapchain");
@@ -336,7 +339,10 @@ namespace vkLearn
                 srcStageMask = VkPipelineStageFlags.ColorAttachmentOutput,
                 srcAccessMask = 0,
                 dstStageMask = VkPipelineStageFlags.ColorAttachmentOutput,
+                dstAccessMask = VkAccessFlags.ColorAttachmentWrite
             };
+
+            VkSubpassDependency[] dependecies = { dependency };
 
             VkRenderPassCreateInfo createInfo = new()
             {
@@ -346,7 +352,7 @@ namespace vkLearn
                 subpassCount = 1,
                 pSubpasses = &subpassDescription,
                 dependencyCount = 1,
-                pDependencies = &dependency
+                pDependencies = Interop.AllocToPointer(dependecies)
             };
 
             vkCreateRenderPass(device, &createInfo, null, out renderPass).CheckResult();
@@ -356,8 +362,41 @@ namespace vkLearn
             var frag = "shaders/frag.glsl";
             var vert = "shaders/vert.glsl";
 
-            vertShader = createShaderModule(vert, ShaderKind.VertexShader);
-            fragShader = createShaderModule(frag, ShaderKind.FragmentShader);
+            var frags = @"
+#version 450
+
+layout(location = 0) in vec3 fragColor;
+
+layout(location = 0) out vec4 outColor;
+
+void main() {
+    outColor = vec4(fragColor, 1.0);
+}";
+
+            var verts = @"
+#version 450
+
+layout(location = 0) out vec3 fragColor;
+
+vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+);
+
+vec3 colors[3] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, 0.0, 1.0)
+);
+
+void main() {
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    fragColor = colors[gl_VertexIndex];
+}";
+
+            vertShader = createShaderModule(verts, ShaderKind.VertexShader);
+            fragShader = createShaderModule(frags, ShaderKind.FragmentShader);
 
             Console.WriteLine("shaders compiled successfully");
 
@@ -566,20 +605,50 @@ namespace vkLearn
         }
         void CreateCommandBuffers()
         {
-            VkCommandBufferAllocateInfo cmdAllocInfo = new()
-            {
-                sType = VkStructureType.CommandBufferAllocateInfo,
-                commandPool = cmdPool,
-                level = VkCommandBufferLevel.Primary,
-                commandBufferCount = (uint)cmdBuffers.Count
-            };
+            cmdBuffers = new(swapChainFramebuffers.Count);
 
-            for(int i = 0; i < swapChainImages.Count; i++)
+            VkCommandBufferAllocateInfo allocInfo = new();
+            allocInfo.sType = VkStructureType.CommandBufferAllocateInfo;
+            allocInfo.commandPool = cmdPool;
+            allocInfo.level =  VkCommandBufferLevel.Primary;
+            allocInfo.commandBufferCount = (uint)cmdBuffers.Capacity;
+
+            //vkAllocateCommandBuffers(device, &allocInfo, Interop.AllocToPointer(cmdBuffers.ToArray())).CheckResult();
+            
+            for(int i = 0; i < cmdBuffers.Capacity; i++)
             {
-                VkCommandBuffer cmd;
-                vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmd);
-                cmdBuffers.Add(cmd);
+                vkAllocateCommandBuffer(device, cmdPool, out VkCommandBuffer cmd);
+                cmdBuffers.Insert(i, cmd);
             }
+            
+            VkCommandBufferBeginInfo beginInfo = new();
+            beginInfo.sType = VkStructureType.CommandBufferBeginInfo;
+            beginInfo.flags = 0; // Optional
+            beginInfo.pInheritanceInfo = null; // Optional
+
+            for (int i = 0; i < cmdBuffers.Capacity; i++)
+            {
+                VkCommandBuffer cmd = cmdBuffers[i];
+
+                vkBeginCommandBuffer(cmd, &beginInfo).CheckResult();
+
+                VkClearValue clearColor = new(new VkClearColorValue(.5f, .5f, .5f, 1));
+                VkRenderPassBeginInfo passBeginInfo = new()
+                {
+                    sType = VkStructureType.RenderPassBeginInfo,
+                    renderPass = renderPass,
+                    framebuffer = swapChainFramebuffers.First(),
+                    renderArea = new VkRect2D(0, 0, swapChainExtent.width, swapChainExtent.height),
+                    clearValueCount = 1,
+                    pClearValues = &clearColor,
+                };
+
+                vkCmdBeginRenderPass(cmd, &passBeginInfo, VkSubpassContents.Inline);
+                vkCmdBindPipeline(cmd, VkPipelineBindPoint.Graphics, graphicsPipeline);
+                vkCmdDraw(cmd, 3, 1, 0, 0);
+                vkCmdEndRenderPass(cmd);
+                vkEndCommandBuffer(cmd).CheckResult();
+             }
         }
         void CreateSemaphores()
         {
@@ -611,46 +680,19 @@ namespace vkLearn
             submitInfo.waitSemaphoreCount = 1;
             submitInfo.pWaitSemaphores = Interop.AllocToPointer(waitSemaphores);
             submitInfo.pWaitDstStageMask = Interop.AllocToPointer(waitStages);
+
             submitInfo.commandBufferCount = 1;
-            Console.WriteLine($"img index : {imgIndex}");
             var cmd = cmdBuffers[(int)imgIndex];
             submitInfo.pCommandBuffers = &cmd;
+            Console.WriteLine($"img index : {imgIndex}");
 
             VkSemaphore[] signalSemaphores = { renderFinishedSemaphore };
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores = Interop.AllocToPointer(signalSemaphores);
 
-            vkQueueSubmit(queue, submitInfo, VkFence.Null);
+            Console.WriteLine($"CommandBuffer #{imgIndex} selected");
 
-            for (int i = 0; i < cmdBuffers.Count; i++)
-            {
-                VkCommandBufferBeginInfo beginInfo = new()
-                {
-                    sType = VkStructureType.CommandBufferBeginInfo,
-                    flags = VkCommandBufferUsageFlags.RenderPassContinue,
-                    pInheritanceInfo = null
-                };
-
-                vkBeginCommandBuffer(cmdBuffers[i], &beginInfo).CheckResult();
-
-                VkClearValue clearColor = new(new VkClearColorValue(.5f, .5f, .5f, 1));
-                VkRenderPassBeginInfo passBeginInfo = new()
-                {
-                    sType = VkStructureType.RenderPassBeginInfo,
-                    renderPass = renderPass,
-                    framebuffer = swapChainFramebuffers[i],
-                    renderArea = new VkRect2D(0, 0, swapChainExtent.width, swapChainExtent.height),
-                    clearValueCount = 1,
-                    pClearValues = &clearColor,
-                };
-
-
-
-                vkCmdBeginRenderPass(cmdBuffers[i], &passBeginInfo, VkSubpassContents.Inline);
-                vkCmdBindPipeline(cmdBuffers[i], VkPipelineBindPoint.Graphics, graphicsPipeline);
-                vkCmdEndRenderPass(cmdBuffers[i]);
-                vkEndCommandBuffer(cmdBuffers[i]).CheckResult();
-            }
+            vkQueueSubmit(queue, submitInfo, VkFence.Null);//.CheckResult();
             
             fixed(VkSwapchainKHR* swapPtr = &swapChain)
             {
@@ -669,13 +711,15 @@ namespace vkLearn
             vkQueueWaitIdle(queue);
         }
 
+
+
         VkShaderModule createShaderModule(string path, ShaderKind kind)
         {
             VkShaderModule module = VkShaderModule.Null;
 
             var compiler = new Compiler();
 
-            var src = File.ReadAllText(path);
+            var src = path;// File.ReadAllText(path);
             var result = compiler.Compile(src, "", kind);
 
             vkCreateShaderModule(device, result.GetBytecode().ToArray(), null, out module).CheckResult();
