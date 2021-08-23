@@ -667,13 +667,16 @@ void main() {
 
         void DrawFrame()
         {
-            uint imgIndex = 0;
-            vkAcquireNextImageKHR(device, swapChain, ulong.MaxValue, imageAvailableSemaphore, VkFence.Null, out imgIndex);
+            vkQueueWaitIdle(presentQueue);
 
-            VkSemaphore[] waitSemaphores = { imageAvailableSemaphore };
-            VkPipelineStageFlags[] waitStages = { VkPipelineStageFlags.ColorAttachmentOutput };
-            VkSemaphore[] signalSemaphores = { renderFinishedSemaphore };
-            var cmd = cmdBuffers[(int)imgIndex];
+            uint imgIndex = 0;
+            vkAcquireNextImageKHR(device, swapChain, ulong.MaxValue, imageAvailableSemaphore, VkFence.Null, out imgIndex);//.CheckResult();
+
+            VkSemaphore* waitSemaphores = stackalloc VkSemaphore[] { imageAvailableSemaphore };
+            VkPipelineStageFlags* waitStages = stackalloc VkPipelineStageFlags[] { VkPipelineStageFlags.ColorAttachmentOutput };
+            VkSemaphore* signalSemaphores = stackalloc VkSemaphore[] { renderFinishedSemaphore };
+            VkCommandBuffer* cmd = stackalloc VkCommandBuffer[] { cmdBuffers[(int)imgIndex] };
+           // var cmd = cmdBuffers[(int)imgIndex];
             Console.WriteLine($"img index : {imgIndex}");
 
 
@@ -681,36 +684,32 @@ void main() {
             {
                 sType = VkStructureType.SubmitInfo,
                 waitSemaphoreCount = 1,
-                pWaitSemaphores = Interop.AllocToPointer(waitSemaphores),
-                pWaitDstStageMask = Interop.AllocToPointer(waitStages),
+                pWaitSemaphores = waitSemaphores,
+                pWaitDstStageMask = waitStages,
                 commandBufferCount = 1,
-                pCommandBuffers = &cmd,
+                pCommandBuffers = cmd,
                 signalSemaphoreCount = 1,
-                pSignalSemaphores = Interop.AllocToPointer(signalSemaphores),
+                pSignalSemaphores = signalSemaphores,
             };
 
             Console.WriteLine($"CommandBuffer #{imgIndex} selected");
 
-            vkQueueSubmit(queue, submitInfo, VkFence.Null).CheckResult();
+            vkQueueSubmit(queue, 1, &submitInfo, 0);//.CheckResult();
+
+            VkSwapchainKHR* swapPtr = stackalloc VkSwapchainKHR[] { swapChain };
             
-            fixed(VkSwapchainKHR* swapPtr = &swapChain)
+            VkPresentInfoKHR present = new()
             {
-                VkPresentInfoKHR present = new()
-                {
-                    sType = VkStructureType.PresentInfoKHR,
-                    waitSemaphoreCount = 1,
-                    pWaitSemaphores = Interop.AllocToPointer(signalSemaphores),
-                    swapchainCount = 1,
-                    pSwapchains = swapPtr,
-                    pImageIndices = &imgIndex,
-                    pResults = null //optional
-                };
-                vkQueuePresentKHR(queue, &present);
-            }
-            vkQueueWaitIdle(queue);
+                sType = VkStructureType.PresentInfoKHR,
+                waitSemaphoreCount = 1,
+                pWaitSemaphores = signalSemaphores,
+                swapchainCount = 1,
+                pSwapchains = swapPtr,
+                pImageIndices = &imgIndex,
+                pResults = null //optional
+            };
+            vkQueuePresentKHR(presentQueue, &present);
         }
-
-
 
         VkShaderModule createShaderModule(string path, ShaderKind kind)
         {
