@@ -51,7 +51,7 @@ namespace vkLearn
 
         VkSwapchainKHR swapChain;
         VkSurfaceKHR surface;// = VkSurfaceKHR.Null;
-        VkQueue queue = VkQueue.Null;
+        VkQueue graphicsQueue = VkQueue.Null;
         VkQueue presentQueue = VkQueue.Null;
         VkDevice device = VkDevice.Null;
         VkInstance instance;
@@ -208,8 +208,8 @@ namespace vkLearn
 
             vkCreateDevice(gpu, &deviceInfo, null, out device).CheckResult();
 
-            vkGetDeviceQueue(device, indices.graphicsFamily.Value, 0, out queue);
-            vkGetDeviceQueue(device, indices.graphicsFamily.Value, 0, out presentQueue);
+            vkGetDeviceQueue(device, indices.graphicsFamily.Value, 0, out graphicsQueue);
+            vkGetDeviceQueue(device, indices.presentFamily.Value, 0, out presentQueue);
         }
         void CreateSurface()
         {
@@ -566,7 +566,7 @@ void main() {
         {
             for (int i = 0; i < swapChainImages.Count; i++)
             {
-                VkImageView[] attachments =
+                VkImageView* attachments = stackalloc VkImageView[]
                 {
                     swapChainImageViews[i]
                 };
@@ -576,7 +576,7 @@ void main() {
                     sType = VkStructureType.FramebufferCreateInfo,
                     renderPass = renderPass,
                     attachmentCount = 1,
-                    pAttachments = Interop.AllocToPointer(attachments),
+                    pAttachments = attachments,
                     width = swapChainExtent.width,
                     height = swapChainExtent.height,
                     layers = 1
@@ -694,7 +694,7 @@ void main() {
 
             Console.WriteLine($"CommandBuffer #{imgIndex} selected");
 
-            vkQueueSubmit(queue, 1, &submitInfo, 0);//.CheckResult();
+            vkQueueSubmit(graphicsQueue, 1, &submitInfo, 0);//.CheckResult();
 
             VkSwapchainKHR* swapPtr = stackalloc VkSwapchainKHR[] { swapChain };
             
