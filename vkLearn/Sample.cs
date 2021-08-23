@@ -111,7 +111,7 @@ namespace vkLearn
             VkDebugUtilsMessengerCreateInfoEXT debug_utils_create_info = new()
             {
                 sType = VkStructureType.DebugUtilsMessengerCreateInfoEXT,
-                messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Info | VkDebugUtilsMessageSeverityFlagsEXT.Warning,
+                messageSeverity = VkDebugUtilsMessageSeverityFlagsEXT.Info | VkDebugUtilsMessageSeverityFlagsEXT.Warning | VkDebugUtilsMessageSeverityFlagsEXT.Warning,
                 messageType = VkDebugUtilsMessageTypeFlagsEXT.Validation | VkDebugUtilsMessageTypeFlagsEXT.Performance,
                 pfnUserCallback = &DebugMessengerCallback
             };
@@ -177,7 +177,7 @@ namespace vkLearn
             float priority = 1f;
             VkDeviceQueueCreateInfo queueCreateInfo = new()
             {
-                sType = VkStructureType.DeviceCreateInfo,
+                sType = VkStructureType.DeviceQueueCreateInfo,
                 queueFamilyIndex = indices.graphicsFamily.Value,
                 queueCount = 1,
                 pQueuePriorities = &priority
@@ -217,7 +217,7 @@ namespace vkLearn
             {
                 sType = VkStructureType.Win32SurfaceCreateInfoKHR,
                 hwnd = window.hwnd,
-                hinstance = (nint)Process.GetCurrentProcess().Handle.ToPointer()// GetModuleHandle(null)
+                hinstance = GetModuleHandle(null)
             };
             vkCreateWin32SurfaceKHR(instance, &win32info, null, out surface).CheckResult();
             Console.WriteLine("surface created successfully");
@@ -670,29 +670,28 @@ void main() {
             uint imgIndex = 0;
             vkAcquireNextImageKHR(device, swapChain, ulong.MaxValue, imageAvailableSemaphore, VkFence.Null, out imgIndex);
 
-            VkSubmitInfo submitInfo = new()
-            {
-                sType = VkStructureType.SubmitInfo
-            };
-
             VkSemaphore[] waitSemaphores = { imageAvailableSemaphore };
             VkPipelineStageFlags[] waitStages = { VkPipelineStageFlags.ColorAttachmentOutput };
-            submitInfo.waitSemaphoreCount = 1;
-            submitInfo.pWaitSemaphores = Interop.AllocToPointer(waitSemaphores);
-            submitInfo.pWaitDstStageMask = Interop.AllocToPointer(waitStages);
-
-            submitInfo.commandBufferCount = 1;
+            VkSemaphore[] signalSemaphores = { renderFinishedSemaphore };
             var cmd = cmdBuffers[(int)imgIndex];
-            submitInfo.pCommandBuffers = &cmd;
             Console.WriteLine($"img index : {imgIndex}");
 
-            VkSemaphore[] signalSemaphores = { renderFinishedSemaphore };
-            submitInfo.signalSemaphoreCount = 1;
-            submitInfo.pSignalSemaphores = Interop.AllocToPointer(signalSemaphores);
+
+            VkSubmitInfo submitInfo = new()
+            {
+                sType = VkStructureType.SubmitInfo,
+                waitSemaphoreCount = 1,
+                pWaitSemaphores = Interop.AllocToPointer(waitSemaphores),
+                pWaitDstStageMask = Interop.AllocToPointer(waitStages),
+                commandBufferCount = 1,
+                pCommandBuffers = &cmd,
+                signalSemaphoreCount = 1,
+                pSignalSemaphores = Interop.AllocToPointer(signalSemaphores),
+            };
 
             Console.WriteLine($"CommandBuffer #{imgIndex} selected");
 
-            vkQueueSubmit(queue, submitInfo, VkFence.Null);//.CheckResult();
+            vkQueueSubmit(queue, submitInfo, VkFence.Null).CheckResult();
             
             fixed(VkSwapchainKHR* swapPtr = &swapChain)
             {
@@ -704,7 +703,7 @@ void main() {
                     swapchainCount = 1,
                     pSwapchains = swapPtr,
                     pImageIndices = &imgIndex,
-                    //pResults = null //optional
+                    pResults = null //optional
                 };
                 vkQueuePresentKHR(queue, &present);
             }
@@ -948,9 +947,11 @@ void main() {
             uint i = 0;
             foreach (var queueFamily in vkGetPhysicalDeviceQueueFamilyProperties(_gpu))
             {
-                if (queueFamily.queueFlags == VkQueueFlags.Graphics)
+                if (queueFamily.queueCount > 0 && ((queueFamily.queueFlags & VkQueueFlags.Graphics) != 0))
                 {
                     indices.graphicsFamily = i;
+
+                    Console.WriteLine($"graphics family : {i}");
                 }
 
                 Console.WriteLine($"index #{i}, queueFlags is {queueFamily.queueFlags}");
@@ -960,6 +961,7 @@ void main() {
                 if (presentSupport)
                 {
                     indices.presentFamily = i;
+                    Console.WriteLine($"present family : {i}");
                 }
 
                 if (indices.isComplete())
@@ -970,8 +972,8 @@ void main() {
                 i++;
             }
 
-            indices.graphicsFamily = 1;
-            indices.presentFamily = 1;
+            //indices.graphicsFamily = 0;
+            //indices.presentFamily = 0;
 
             return indices;
         }
