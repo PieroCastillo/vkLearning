@@ -11,7 +11,16 @@ namespace vkLearn
     {
         public static byte* ToVk(this string str) => new VkString(str).Pointer;
 
+        public static List<string> ToList(this ReadOnlySpan<VkExtensionProperties> span)
+        {
+            var list = new List<string>();
 
+            foreach(var element in span)
+            {
+                list.Add(element.GetExtensionName());
+            }
 
+            return list;
+        }
     }
 }
