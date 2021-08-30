@@ -12,6 +12,7 @@ using static vkLearn.Win32;
 using System.IO;
 using System.Collections;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace vkLearn
 {
@@ -160,8 +161,10 @@ namespace vkLearn
             vkCreateSemaphore(Device, out ImageAvailableSemaphore);
             vkCreateSemaphore(Device, out RenderingFinishedSemaphore);
         }
-        void CreateSwapChain()
+        void CreateSwapChain([CallerMemberName]string methodName = "unknown")
         {
+            Console.WriteLine($"called from {methodName}");
+
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(selectedGpu, Surface, out VkSurfaceCapabilitiesKHR surfaceCapabilities).CheckResult();
 
             var surfaceFormats = vkGetPhysicalDeviceSurfaceFormatsKHR(selectedGpu, Surface);
@@ -243,7 +246,6 @@ namespace vkLearn
 
             RecordCommandBuffers();
         }
-
         void RecordCommandBuffers()
         {
             uint imageCount = (uint)PresentQueueCmdBuffers.Count ;
@@ -301,6 +303,11 @@ namespace vkLearn
             }
 
             Console.WriteLine($"cmdBuffers count : {PresentQueueCmdBuffers.Count}");
+        }
+
+        void CreateRenderPass()
+        {
+
         }
 
         void Draw()
@@ -363,8 +370,8 @@ namespace vkLearn
             switch (result2)
             {
                 case VkResult.Success: break;
-                case VkResult.SuboptimalKHR: break;
-                case VkResult.ErrorOutOfDateKHR: OnWindowResized(); break;
+                case VkResult.SuboptimalKHR: OnWindowResized(); break;
+                case VkResult.ErrorOutOfDateKHR: break;
                 default:
                     Console.WriteLine("Problem occurred during swap chain image acquisition!");
                     break;
@@ -380,9 +387,9 @@ namespace vkLearn
             }
         }
 
-
         void OnWindowResized()
         {
+            Clear();
             CreateSwapChain();
             CreateCommandBuffers();
         }
