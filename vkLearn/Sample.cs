@@ -383,7 +383,20 @@ namespace vkLearn
 
         void OnWindowResized()
         {
+            CreateSwapChain();
+            CreateCommandBuffers();
+        }
 
+        void Clear()
+        {
+            vkDeviceWaitIdle(Device);
+            if (PresentQueueCmdBuffers.Any())
+            {
+                vkFreeCommandBuffers(Device, PresentQueueCmdPool, PresentQueueCmdBuffers[0]);
+            }
+            PresentQueueCmdBuffers.Clear();
+            vkDestroyCommandPool(Device, PresentQueueCmdPool, null);
+            PresentQueueCmdPool = VkCommandPool.Null;
         }
 
         uint getSwapChainNumImages(VkSurfaceCapabilitiesKHR surfaceCapabilities)
@@ -646,12 +659,16 @@ namespace vkLearn
 
         public void Dispose()
         {
-            if(Device != VkDevice.Null)
-            {
-                vkDeviceWaitIdle(Device);
-                vkDestroyDevice(Device, null);
-            }
+            Clear();
 
+            vkDeviceWaitIdle(Device);
+
+            vkDestroySemaphore(Device, ImageAvailableSemaphore, null);
+            vkDestroySemaphore(Device, RenderingFinishedSemaphore, null);
+
+            vkDestroySwapchainKHR(Device, SwapChain, null);
+            vkDestroyDevice(Device, null);
+            vkDestroySurfaceKHR(Instance, Surface, null);
             vkDestroyInstance(Instance, null);
         }
     }
