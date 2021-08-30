@@ -246,7 +246,7 @@ namespace vkLearn
 
         void RecordCommandBuffers()
         {
-            uint imageCount = (uint)PresentQueueCmdBuffers.Count - 1;
+            uint imageCount = (uint)PresentQueueCmdBuffers.Count ;
             List<VkImage> swapChainImages = new((int)imageCount);
 
             swapChainImages.Insert(0, vkGetSwapchainImagesKHR(Device, SwapChain)[0]);
@@ -307,6 +307,7 @@ namespace vkLearn
         {
             uint imageIndex = 0;
             var result1 = vkAcquireNextImageKHR(Device, SwapChain, uint.MaxValue, ImageAvailableSemaphore, VkFence.Null, out imageIndex);
+            imageIndex = 0;
             switch (result1)
             {
                 case VkResult.Success: break; 
