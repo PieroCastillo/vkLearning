@@ -225,8 +225,8 @@ namespace vkLearn
             vkCreateCommandPool(Device, &commandPoolCreateInfo, null, out PresentQueueCmdPool).CheckResult();
 
             uint imageCount = 0;
-            var images = vkGetSwapchainImagesKHR(Device, SwapChain);
-            imageCount = (uint)images.Length;
+            vkGetSwapchainImagesKHR(Device, SwapChain, &imageCount, null);
+            //imageCount = (uint)images.Length;
             PresentQueueCmdBuffers = new((int)imageCount);
 
             VkCommandBufferAllocateInfo commandBufferAllocateInfo = new()
@@ -235,7 +235,7 @@ namespace vkLearn
                 pNext = null,
                 commandPool = PresentQueueCmdPool,
                 level = VkCommandBufferLevel.Primary,
-                commandBufferCount = imageCount,
+                commandBufferCount = imageCount
             };
 
             vkAllocateCommandBuffer(Device, &commandBufferAllocateInfo, out VkCommandBuffer cmd).CheckResult();
@@ -259,7 +259,7 @@ namespace vkLearn
                 pInheritanceInfo = null
             };
 
-            VkClearColorValue colorValue = new(1, .8f, .4f, .0f);
+            VkClearColorValue colorValue = new(1, .8f, .4f);
 
             VkImageSubresourceRange imageSubresourceRange = new(VkImageAspectFlags.Color, 0, 1, 0, 1);
 
@@ -338,7 +338,7 @@ namespace vkLearn
 
                 };
 
-                vkQueueSubmit(PresentQueue, submitInfo, VkFence.Null).CheckResult();
+                vkQueueSubmit(PresentQueue, 1, &submitInfo, VkFence.Null).CheckResult();
             }
 
             Console.WriteLine("frame submitted");
