@@ -36,6 +36,14 @@ namespace vkLearn
         List<VkCommandBuffer> PresentQueueCmdBuffers;
         VkCommandPool PresentQueueCmdPool;
 
+        VkFormat format = VkFormat.Undefined;
+        VkRenderPass RenderPass = VkRenderPass.Null;
+        List<VkImageView> FramebufferObjects;
+        List<VkFramebuffer> Framebuffers;
+        static Compiler shaderCompiler = new();
+        VkPipelineLayout PipelineLayout;
+        VkPipeline GraphicsPipeline;
+
         public Sample()
         {
             window = new Window(600, 800, "learn");
@@ -45,6 +53,9 @@ namespace vkLearn
             GetDeviceQueue();
             CreateSemaphores();
             CreateSwapChain();
+            CreateRenderPass();
+            CreateFramebuffers();
+            CreatePipeline();
             CreateCommandBuffers();
 
             RenderLoop();
@@ -184,6 +195,8 @@ namespace vkLearn
             var desiredPresentMode = getSwapChainPresentMode(presentModes);
             var oldSwapChain = SwapChain;
 
+            format = desiredFormat.format;
+
             VkSwapchainCreateInfoKHR swapchainCreateInfo = new()
             {
                 sType = VkStructureType.SwapchainCreateInfoKHR,
@@ -214,6 +227,247 @@ namespace vkLearn
             {
                 vkDestroySwapchainKHR(Device, oldSwapChain, null);
             }
+        }
+
+        void CreateRenderPass()
+        {
+            VkAttachmentDescription attachmentDescription = new()
+            {
+                flags = 0,
+                format = format,
+                samples = VkSampleCountFlags.Count1,
+                loadOp = VkAttachmentLoadOp.Clear,
+                storeOp = VkAttachmentStoreOp.Store,
+                stencilLoadOp = VkAttachmentLoadOp.DontCare,
+                stencilStoreOp = VkAttachmentStoreOp.DontCare,
+                initialLayout = VkImageLayout.PresentSrcKHR,
+                finalLayout = VkImageLayout.PresentSrcKHR
+            };
+            VkAttachmentDescription* attachmentDescriptions = stackalloc VkAttachmentDescription[] { attachmentDescription };
+
+            VkAttachmentReference colorAttachmentReference = new(0, VkImageLayout.ColorAttachmentOptimal);
+            VkAttachmentReference* colorAttachmentReferences = stackalloc VkAttachmentReference[] { colorAttachmentReference };
+
+            VkSubpassDescription subpassDescription = new()
+            {
+                flags = 0,
+                pipelineBindPoint = VkPipelineBindPoint.Graphics,
+                inputAttachmentCount = 0,
+                pInputAttachments = null,
+                colorAttachmentCount = 1,
+                pColorAttachments = colorAttachmentReferences,
+                pResolveAttachments = null,
+                pDepthStencilAttachment = null,
+                preserveAttachmentCount = 0,
+                pPreserveAttachments = null
+            };
+            VkSubpassDescription* subpassDescriptions = stackalloc VkSubpassDescription[] { subpassDescription };
+
+            VkRenderPassCreateInfo renderPassCreateInfo = new()
+            {
+                sType = VkStructureType.RenderPassCreateInfo,
+                pNext = null,
+                flags = 0,
+                attachmentCount = 1,
+                pAttachments = attachmentDescriptions,
+                subpassCount = 1,
+                pSubpasses = subpassDescriptions,
+                dependencyCount = 0,
+                pDependencies = null
+            };
+
+            vkCreateRenderPass(Device, &renderPassCreateInfo, null, out RenderPass).CheckResult();
+        }
+        void CreateFramebuffers()
+        {
+            var images = vkGetSwapchainImagesKHR(Device, SwapChain);
+            FramebufferObjects = new(images.Length);
+            Framebuffers = new(images.Length);
+
+            for(int i = 0; i < images.Length; ++i)
+            {
+                VkImageViewCreateInfo imageViewCreateInfo = new()
+                {
+                    sType = VkStructureType.ImageViewCreateInfo,
+                    pNext = null,
+                    flags = 0,
+                    image = images[i],
+                    viewType = VkImageViewType.Image2D,
+                    format = format,
+                    components = new(VkComponentSwizzle.Identity, VkComponentSwizzle.Identity, VkComponentSwizzle.Identity, VkComponentSwizzle.Identity),
+                    subresourceRange = new(VkImageAspectFlags.Color, 0, 1, 0, 1)
+                };
+
+                vkCreateImageView(Device, &imageViewCreateInfo, null, out VkImageView imageView).CheckResult();
+                FramebufferObjects.Insert(i, imageView);
+
+                VkFramebufferCreateInfo framebufferCreateInfo = new()
+                {
+                    sType = VkStructureType.FramebufferCreateInfo,
+                    pNext = null,
+                    flags = 0,
+                    renderPass = RenderPass,
+                    attachmentCount = 1,
+                    pAttachments = &imageView,
+                    width = (uint)window.Width,
+                    height = (uint)window.Height,
+                    layers = 1
+                };
+
+                vkCreateFramebuffer(Device, &framebufferCreateInfo, null, out VkFramebuffer framebuffer).CheckResult();
+                Framebuffers.Insert(i, framebuffer);
+            }
+        }
+        void CreatePipelineLayout()
+        {
+            VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineLayoutCreateInfo,
+                pNext = null,
+                flags = 0,
+                setLayoutCount = 0,
+                pSetLayouts = null,
+                pushConstantRangeCount = 0,
+                pPushConstantRanges = null
+            };
+
+            vkCreatePipelineLayout(Device, &pipelineLayoutCreateInfo, null, out PipelineLayout).CheckResult();
+        }
+        void CreatePipeline()
+        {
+            var vertexsm = CreateShaderModule(Shaders.tutorial3VertexSh, ShaderKind.VertexShader);
+            var fragmentsm = CreateShaderModule(Shaders.tutorial3FragmentSh, ShaderKind.FragmentShader);
+
+            VkPipelineShaderStageCreateInfo vertexStageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineShaderStageCreateInfo,
+                pNext = null,
+                flags = 0,
+                stage = VkShaderStageFlags.Vertex,
+                pName = "main".ToVk(),
+                pSpecializationInfo = null,
+                module = vertexsm
+            };
+
+            VkPipelineShaderStageCreateInfo fragmentStageCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineShaderStageCreateInfo,
+                pNext = null,
+                flags = 0,
+                stage = VkShaderStageFlags.Fragment,
+                pName = "main".ToVk(),
+                pSpecializationInfo = null,
+                module = fragmentsm
+            };
+
+            VkPipelineShaderStageCreateInfo* stagesCreateInfos = stackalloc VkPipelineShaderStageCreateInfo[2]
+            {
+                vertexStageCreateInfo,
+                fragmentStageCreateInfo
+            };
+            uint stagesCount = 2;
+
+            VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineVertexInputStateCreateInfo,
+                pNext = null,
+                pVertexAttributeDescriptions = null,
+                pVertexBindingDescriptions = null,
+            };
+
+            VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineVertexInputStateCreateInfo,
+                pNext = null,
+                primitiveRestartEnable = false,
+                topology = VkPrimitiveTopology.TriangleList
+            };
+
+            VkViewport viewport = new(0, 0, window.Width, window.Height, 0, 1);
+            VkRect2D scissor = new(0, 0, window.Width, window.Height);
+
+            VkPipelineViewportStateCreateInfo viewportStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineViewportStateCreateInfo,
+                pNext = null,
+                flags = 0,
+                viewportCount = 1,
+                pViewports = &viewport,
+                scissorCount = 1,
+                pScissors = &scissor
+            };
+
+            VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineRasterizationStateCreateInfo,
+                pNext = null,
+                flags = 0,
+                depthClampEnable = false,
+                rasterizerDiscardEnable = false,
+                polygonMode = VkPolygonMode.Fill,
+                cullMode = VkCullModeFlags.Back,
+                frontFace = VkFrontFace.Clockwise,
+                depthBiasEnable = false,
+                depthBiasConstantFactor = 0,
+                depthBiasClamp = 0,
+                depthBiasSlopeFactor = 0,
+                lineWidth = 1
+            };
+
+            VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineMultisampleStateCreateInfo,
+                pNext = null,
+                flags = 0,
+                rasterizationSamples = VkSampleCountFlags.Count1,
+                sampleShadingEnable = false,
+                minSampleShading = 1,
+                pSampleMask = null,
+                alphaToCoverageEnable = false,
+                alphaToOneEnable = false
+            };
+
+            VkPipelineColorBlendAttachmentState colorBlendAttachmentState = new(false);
+
+            VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = new()
+            {
+                sType = VkStructureType.PipelineColorBlendStateCreateInfo,
+                pNext = null,
+                flags = 0,
+                logicOpEnable = false,
+                logicOp = VkLogicOp.Copy,
+                attachmentCount = 1,
+                pAttachments = &colorBlendAttachmentState
+            };
+            colorBlendStateCreateInfo.blendConstants[0] = 0;
+            colorBlendStateCreateInfo.blendConstants[1] = 0;
+            colorBlendStateCreateInfo.blendConstants[2] = 0;
+            colorBlendStateCreateInfo.blendConstants[3] = 0;
+
+            VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo = new()
+            {
+                sType = VkStructureType.GraphicsPipelineCreateInfo,
+                pNext = null,
+                flags = 0,
+                stageCount = stagesCount,
+                pStages = stagesCreateInfos,
+                pVertexInputState = &vertexInputStateCreateInfo,
+                pInputAssemblyState = &inputAssemblyStateCreateInfo,
+                pTessellationState = null,
+                pViewportState = &viewportStateCreateInfo,
+                pRasterizationState = &rasterizationStateCreateInfo,
+                pMultisampleState = &multisampleStateCreateInfo,
+                pDepthStencilState = null,
+                pColorBlendState = &colorBlendStateCreateInfo,
+                pDynamicState = null,
+                layout = PipelineLayout,
+                renderPass = RenderPass,
+                subpass = 0,
+                basePipelineHandle = VkPipeline.Null,
+                basePipelineIndex = 0
+            };
+
+            vkCreateGraphicsPipeline(Device, graphicsPipelineCreateInfo, out GraphicsPipeline).CheckResult();
         }
         void CreateCommandBuffers()
         {
@@ -261,55 +515,68 @@ namespace vkLearn
                 pInheritanceInfo = null
             };
 
-            VkClearColorValue colorValue = new(1, .8f, .4f);
+            VkClearValue colorValue = new(1, .8f, .4f);
 
             VkImageSubresourceRange imageSubresourceRange = new(VkImageAspectFlags.Color, 0, 1, 0, 1);
 
             for(uint i = 0; i < imageCount; ++i)
             {
-                VkImageMemoryBarrier barrierFromPresentToClear = new()
+                vkBeginCommandBuffer(PresentQueueCmdBuffers[(int)i], &beginInfo);
+                
+                VkImageMemoryBarrier barrierFromPresentToDraw = new()
                 {
                     sType = VkStructureType.ImageMemoryBarrier,
                     pNext = null,
                     srcAccessMask = VkAccessFlags.MemoryRead,
-                    dstAccessMask = VkAccessFlags.TransferWrite,
+                    dstAccessMask = VkAccessFlags.ColorAttachmentWrite,
                     oldLayout = VkImageLayout.Undefined,
-                    newLayout = VkImageLayout.TransferDstOptimal,
+                    newLayout = VkImageLayout.PresentSrcKHR,
                     srcQueueFamilyIndex = PresentQueueFamilyIndex,
-                    dstQueueFamilyIndex = PresentQueueFamilyIndex,
+                    dstQueueFamilyIndex = GraphicsQueueFamilyIndex,
                     image = swapChainImages[(int)i],
                     subresourceRange = imageSubresourceRange
                 };
+                
+                vkCmdPipelineBarrier(PresentQueueCmdBuffers[(int)i], VkPipelineStageFlags.Transfer, VkPipelineStageFlags.Transfer, 0, 0, null, 0, null, 1, &barrierFromPresentToDraw);
 
-                VkImageMemoryBarrier barrierFromClearToPresent = new()
+
+                VkRenderPassBeginInfo renderPassBeginInfo = new()
+                {
+                    sType = VkStructureType.RenderPassBeginInfo,
+                    renderPass = RenderPass,
+                    framebuffer = FramebufferObjects[(int)i].Handle,
+                    renderArea = new(0, 0, window.Width, window.Height),
+                    clearValueCount = 1,
+                    pClearValues = &colorValue
+                };
+
+                var cmd = PresentQueueCmdBuffers[(int)i];
+                vkCmdBeginRenderPass(cmd, &renderPassBeginInfo, VkSubpassContents.Inline);
+                vkCmdBindPipeline(cmd, VkPipelineBindPoint.Graphics, GraphicsPipeline);
+                vkCmdDraw(cmd, 3, 1, 0, 0);
+
+                vkCmdEndRenderPass(cmd);
+
+                VkImageMemoryBarrier barrierFromDrawToPresent = new()
                 {
                     sType = VkStructureType.ImageMemoryBarrier,
                     pNext = null,
-                    srcAccessMask = VkAccessFlags.TransferWrite,
+                    srcAccessMask = VkAccessFlags.ColorAttachmentWrite,
                     dstAccessMask = VkAccessFlags.MemoryRead,
-                    oldLayout = VkImageLayout.TransferDstOptimal,
+                    oldLayout = VkImageLayout.PresentSrcKHR,
                     newLayout = VkImageLayout.PresentSrcKHR,
-                    srcQueueFamilyIndex = PresentQueueFamilyIndex,
+                    srcQueueFamilyIndex = GraphicsQueueFamilyIndex,
                     dstQueueFamilyIndex = PresentQueueFamilyIndex,
                     image = swapChainImages[(int)i],
                     subresourceRange = imageSubresourceRange
-                };
-
-                vkBeginCommandBuffer(PresentQueueCmdBuffers[(int)i], &beginInfo);
-                vkCmdPipelineBarrier(PresentQueueCmdBuffers[(int)i], VkPipelineStageFlags.Transfer, VkPipelineStageFlags.Transfer, 0, 0, null, 0, null, 1, &barrierFromPresentToClear);
-                vkCmdClearColorImage(PresentQueueCmdBuffers[(int)i], swapChainImages[(int)i], VkImageLayout.TransferDstOptimal, &colorValue, 1, &imageSubresourceRange);
-                vkCmdPipelineBarrier(PresentQueueCmdBuffers[(int)i], VkPipelineStageFlags.Transfer, VkPipelineStageFlags.BottomOfPipe, 0, 0, null, 0, null, 1, &barrierFromClearToPresent);
-                vkEndCommandBuffer(PresentQueueCmdBuffers[(int)i]).CheckResult();
+                };                
+                
+                vkCmdPipelineBarrier(cmd, VkPipelineStageFlags.Transfer, VkPipelineStageFlags.BottomOfPipe, 0, 0, null, 0, null, 1, &barrierFromDrawToPresent);
+                vkEndCommandBuffer(cmd).CheckResult();
             }
 
             Console.WriteLine($"cmdBuffers count : {PresentQueueCmdBuffers.Count}");
         }
-
-        void CreateRenderPass()
-        {
-
-        }
-
         void Draw()
         {
             uint imageIndex = 0;
@@ -346,7 +613,7 @@ namespace vkLearn
 
                 };
 
-                vkQueueSubmit(PresentQueue, 1, &submitInfo, VkFence.Null).CheckResult();
+                vkQueueSubmit(PresentQueue, 1, &submitInfo, VkFence.Null);//.CheckResult();
             }
 
             Console.WriteLine("frame submitted");
@@ -404,6 +671,17 @@ namespace vkLearn
             PresentQueueCmdBuffers.Clear();
             vkDestroyCommandPool(Device, PresentQueueCmdPool, null);
             PresentQueueCmdPool = VkCommandPool.Null;
+        }
+
+        VkShaderModule CreateShaderModule(string source, ShaderKind stage)
+        {
+            vkCreateShaderModule(
+                Device, 
+                shaderCompiler.Compile(source, string.Empty, stage).GetBytecode(), 
+                null,
+                out VkShaderModule shader)
+                .CheckResult();
+            return shader;
         }
 
         uint getSwapChainNumImages(VkSurfaceCapabilitiesKHR surfaceCapabilities)

@@ -62,7 +62,7 @@ namespace vkLearn
 
 
 
-        public static T* AllocToPointer<T>(T[] values) where T : unmanaged
+        public static T* AllocToPointer<T>(params T[] values) where T : unmanaged
         {
             if (values is null || values.Length is 0)
             {
